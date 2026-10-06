@@ -114,7 +114,7 @@ with sync_playwright() as p:
     # Dashboard (desktop)
     d = browser.new_page(viewport={"width": 1280, "height": 900})
     d.goto(BASE + "/dashboard/jordan-and-taylor")
-    d.wait_for_selector("text=Your event album")
+    d.wait_for_selector("text=The Wedding Album")
     d.fill("input[type=password]", "wrong password")
     d.click("button[type=submit]")
     d.wait_for_selector("text=That password is not right")
@@ -166,7 +166,7 @@ with sync_playwright() as p:
     g.close()
 
     d.click("text=Sign out")
-    d.wait_for_selector("text=Your event album")
+    d.wait_for_selector("text=The Wedding Album")
     check(True, "logout returns to login")
 
     m = browser.new_page(viewport={"width": 390, "height": 844}, device_scale_factor=2, is_mobile=True, has_touch=True)
