@@ -288,6 +288,7 @@ p { margin: 0 0 0.6em; }
 .success-thanks { color: var(--accent); }
 .thanks-line { color: var(--primary); }
 .login-hearts { margin: 0 0 0.4rem; text-align: center; }
+.login-event-name { margin: 0.25rem 0 1.1rem; font-size: 1.05rem; color: var(--text-muted); letter-spacing: 0.02em; }
 .title-heart { vertical-align: 0.15em; }
 .stat-number { color: var(--primary); }
 .stats { position: relative; overflow: hidden; }

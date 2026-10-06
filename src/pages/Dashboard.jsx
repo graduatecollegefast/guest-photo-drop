@@ -9,11 +9,26 @@ import DownloadPanel from '../components/DownloadPanel.jsx';
 import SettingsPanel from '../components/SettingsPanel.jsx';
 import { formatDate } from '../utils/format.js';
 import { Heart, IconContext } from '../components/Hearts.jsx';
+import { api } from '../services/api.js';
 
 export default function Dashboard() {
   const { slug } = useParams();
   const auth = useDashboardAuth(slug);
-  useEventTheme(auth.event?.colors);
+  // Public event details (name, type, colors, icon) so the sign-in page can show whose album it is.
+  const [publicEvent, setPublicEvent] = useState(null);
+  useEffect(() => {
+    let live = true;
+    if (slug) {
+      api
+        .getEvent(slug)
+        .then((res) => live && res.event?.name && setPublicEvent(res.event))
+        .catch(() => {});
+    }
+    return () => {
+      live = false;
+    };
+  }, [slug]);
+  useEventTheme(auth.event?.colors || publicEvent?.colors);
   const [view, setView] = useState('gallery');
   const [expired, setExpired] = useState(false);
 
@@ -25,13 +40,16 @@ export default function Dashboard() {
 
   if (auth.status === 'anonymous') {
     return (
+      <IconContext.Provider value={publicEvent?.icon || 'Hearts'}>
       <DashboardLogin
+        event={publicEvent}
         expired={expired}
         onLogin={async (pw) => {
           await auth.login(pw);
           setExpired(false);
         }}
       />
+      </IconContext.Provider>
     );
   }
 
