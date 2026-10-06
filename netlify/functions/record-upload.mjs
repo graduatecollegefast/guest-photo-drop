@@ -32,7 +32,7 @@ export default handler('record-upload', async (req) => {
   // but never for draft or expired events.
   const status = effectiveStatus(event);
   if (status === 'draft' || status === 'expired') {
-    throw new HttpError(403, 'event_not_open', 'This wedding is not accepting photos.');
+    throw new HttpError(403, 'event_not_open', 'This event is not accepting photos.');
   }
 
   // 1. The metadata must really come from Cloudinary for an upload we signed.
@@ -56,7 +56,7 @@ export default handler('record-upload', async (req) => {
   // Idempotency: one record per Cloudinary asset (or per client upload id).
   const { uploadsTable } = config().airtable;
   const existing = await listRecords(uploadsTable, {
-    filterByFormula: `OR({Cloudinary Asset ID} = ${formulaString(r.asset_id)}, {Upload ID} = ${formulaString(uploadId)})`,
+    filterByFormula: `OR({Storage Asset ID} = ${formulaString(r.asset_id)}, {Upload ID} = ${formulaString(uploadId)})`,
     fields: ['Upload ID'],
     maxRecords: 1,
     pageSize: 1,
@@ -71,8 +71,8 @@ export default handler('record-upload', async (req) => {
     Event: [event.recordId],
     'Event Key': event.eventId,
     'Guest Name': cleanText(body.guestName, 80) || undefined,
-    'Cloudinary Asset ID': r.asset_id,
-    'Cloudinary Public ID': r.public_id,
+    'Storage Asset ID': r.asset_id,
+    'Storage Key': r.public_id,
     'Secure URL': typeof r.secure_url === 'string' && r.secure_url.startsWith('https://res.cloudinary.com/') ? r.secure_url : undefined,
     'Resource Type': type,
     Format: format,

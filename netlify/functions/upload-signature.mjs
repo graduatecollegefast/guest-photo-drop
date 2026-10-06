@@ -8,9 +8,9 @@ import { signParams } from '../lib/cloudinary.mjs';
 import { config } from '../lib/config.mjs';
 
 const STATUS_ERRORS = {
-  closed: [403, 'event_closed', 'Uploads for this wedding are now closed.'],
-  expired: [403, 'event_expired', 'This wedding gallery has expired.'],
-  draft: [403, 'event_not_open', 'This wedding is not accepting photos yet.'],
+  closed: [403, 'event_closed', 'Uploads for this event are now closed.'],
+  expired: [403, 'event_expired', 'This gallery has expired.'],
+  draft: [403, 'event_not_open', 'This event is not accepting photos yet.'],
 };
 
 export default handler('upload-signature', async (req) => {
@@ -29,7 +29,7 @@ export default handler('upload-signature', async (req) => {
   if (status !== 'active') throw new HttpError(...STATUS_ERRORS[status]);
 
   const formats = allowedFormats(event);
-  if (!formats.length) throw new HttpError(403, 'event_not_open', 'This wedding is not accepting photos yet.');
+  if (!formats.length) throw new HttpError(403, 'event_not_open', 'This event is not accepting photos yet.');
 
   const { cloudName, apiKey } = config().cloudinary;
   const params = {

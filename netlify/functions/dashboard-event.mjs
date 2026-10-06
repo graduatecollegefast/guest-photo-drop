@@ -1,8 +1,8 @@
 // GET /.netlify/functions/dashboard-event  (requires session)
-// Event details and counts for the couple. Counts come from Airtable rollup fields,
+// Event details and counts for the host. Counts come from Airtable rollup fields,
 // so this never scans the Uploads table.
 
-import { handler, json, requireMethod, ensureConfigured } from '../lib/http.mjs';
+import { handler, json, requireMethod, ensureConfigured, HttpError } from '../lib/http.mjs';
 import { requireSession } from '../lib/session.mjs';
 import { findEventBySlug, effectiveStatus } from '../lib/events.mjs';
 import { config } from '../lib/config.mjs';
@@ -11,6 +11,10 @@ export default handler('dashboard-event', async (req) => {
   requireMethod(req, 'GET');
   ensureConfigured(['SESSION_SECRET', 'AIRTABLE_ACCESS_TOKEN', 'AIRTABLE_BASE_ID', 'AIRTABLE_EVENTS_TABLE_ID']);
   const session = requireSession(req);
+  const wanted = new URL(req.url).searchParams.get('slug');
+  if (wanted && wanted !== session.eventSlug) {
+    throw new HttpError(401, 'session_expired', 'Please sign in to this event.');
+  }
   const event = await findEventBySlug(session.eventSlug, { fresh: true });
   const { limits } = config();
 
@@ -19,8 +23,12 @@ export default handler('dashboard-event', async (req) => {
     event: {
       name: event.name,
       slug: event.slug,
-      weddingDate: event.weddingDate,
-      expirationDate: event.expirationDate,
+      eventType: event.eventType,
+      plan: event.plan,
+      theme: event.theme,
+      eventDate: event.eventDate,
+      uploadsCloseDate: event.uploadsCloseDate,
+      hostingEndDate: event.hostingEndDate,
       status: effectiveStatus(event),
       headline: event.headline,
       coverImageUrl: event.coverImageUrl,

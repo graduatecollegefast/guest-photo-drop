@@ -12,6 +12,8 @@ export function config() {
       baseId: process.env.AIRTABLE_BASE_ID || '',
       eventsTable: process.env.AIRTABLE_EVENTS_TABLE_ID || '',
       uploadsTable: process.env.AIRTABLE_UPLOADS_TABLE_ID || '',
+      customersTable: process.env.AIRTABLE_CUSTOMERS_TABLE_ID || '',
+      ordersTable: process.env.AIRTABLE_ORDERS_TABLE_ID || '',
     },
     cloudinary: {
       cloudName: process.env.CLOUDINARY_CLOUD_NAME || '',
@@ -19,17 +21,20 @@ export function config() {
       apiSecret: process.env.CLOUDINARY_API_SECRET || '',
     },
     dashboard: {
-      passwordHash: process.env.DASHBOARD_PASSWORD_HASH || '',
       sessionSecret: process.env.SESSION_SECRET || '',
-      eventSlug: process.env.EVENT_SLUG || '',
       sessionDays: num('SESSION_DAYS', 7),
     },
+    stripe: {
+      secretKey: process.env.STRIPE_SECRET_KEY || '',
+      webhookSecret: process.env.STRIPE_WEBHOOK_SECRET || '',
+    },
+    // Public site address used in Stripe return links, e.g. https://guestphotodrop.com
+    siteUrl: (process.env.SITE_URL || process.env.URL || '').replace(/\/$/, ''),
     limits: {
       maxImageMB: num('MAX_IMAGE_MB', 10),
       maxVideoMB: num('MAX_VIDEO_MB', 100),
     },
     timezone: process.env.EVENT_TIMEZONE || 'America/Chicago',
-    retentionDays: num('RETENTION_DAYS', 90),
   };
 }
 
@@ -44,12 +49,15 @@ export function missingConfig(keys) {
     AIRTABLE_BASE_ID: c.airtable.baseId,
     AIRTABLE_EVENTS_TABLE_ID: c.airtable.eventsTable,
     AIRTABLE_UPLOADS_TABLE_ID: c.airtable.uploadsTable,
+    AIRTABLE_CUSTOMERS_TABLE_ID: c.airtable.customersTable,
+    AIRTABLE_ORDERS_TABLE_ID: c.airtable.ordersTable,
     CLOUDINARY_CLOUD_NAME: c.cloudinary.cloudName,
     CLOUDINARY_API_KEY: c.cloudinary.apiKey,
     CLOUDINARY_API_SECRET: c.cloudinary.apiSecret,
-    DASHBOARD_PASSWORD_HASH: c.dashboard.passwordHash,
     SESSION_SECRET: c.dashboard.sessionSecret,
-    EVENT_SLUG: c.dashboard.eventSlug,
+    STRIPE_SECRET_KEY: c.stripe.secretKey,
+    STRIPE_WEBHOOK_SECRET: c.stripe.webhookSecret,
+    SITE_URL: c.siteUrl,
   };
   return keys.filter((k) => !flat[k]);
 }

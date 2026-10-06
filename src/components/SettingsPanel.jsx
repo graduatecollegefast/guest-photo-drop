@@ -64,13 +64,15 @@ export default function SettingsPanel({ event, onChanged, onUnauthorized }) {
 
       <dl className="settings-list">
         <div><dt>Status</dt><dd>{event.status}</dd></div>
-        <div><dt>Wedding date</dt><dd>{formatDate(event.weddingDate)}</dd></div>
-        <div><dt>Gallery expires</dt><dd>{formatDate(event.expirationDate)}</dd></div>
+        <div><dt>Plan</dt><dd>{event.plan}</dd></div>
+        <div><dt>Event date</dt><dd>{formatDate(event.eventDate)}</dd></div>
+        <div><dt>Uploads close</dt><dd>{formatDate(event.uploadsCloseDate)}</dd></div>
+        <div><dt>Gallery hosted until</dt><dd>{formatDate(event.hostingEndDate)}</dd></div>
         <div><dt>Photos</dt><dd>{event.allowPhotos ? `Allowed, up to ${event.limits.maxImageMB} MB each` : 'Off'}</dd></div>
         <div><dt>Videos</dt><dd>{event.allowVideos ? `Allowed, up to ${event.limits.maxVideoMB} MB each` : 'Off'}</dd></div>
         <div><dt>Files per upload</dt><dd>{event.maxFilesPerUpload}</dd></div>
       </dl>
-      <p className="muted small">To close uploads or change these settings, ask your photo-album host. Changes apply within a minute.</p>
+      <p className="muted small">To change these settings, contact Guest Photo Drop support. Changes apply within a minute.</p>
     </section>
   );
 }

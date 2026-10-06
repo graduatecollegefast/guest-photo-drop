@@ -46,9 +46,11 @@ export const api = {
   getEvent: (slug) => call(`get-event?slug=${encodeURIComponent(slug)}`),
   uploadSignature: (slug, sessionId) => call('upload-signature', { method: 'POST', body: { slug, sessionId } }),
   recordUpload: (payload) => call('record-upload', { method: 'POST', body: payload }),
-  login: (password) => call('dashboard-login', { method: 'POST', body: { password } }),
+  login: (slug, password) => call('dashboard-login', { method: 'POST', body: { slug, password } }),
   logout: () => call('dashboard-logout', { method: 'POST' }),
-  dashboardEvent: () => call('dashboard-event'),
+  dashboardEvent: (slug) => call(`dashboard-event?slug=${encodeURIComponent(slug)}`),
+  createCheckout: (form) => call('create-checkout', { method: 'POST', body: form, timeoutMs: 30000 }),
+  checkoutStatus: (sessionId) => call(`checkout-status?session_id=${encodeURIComponent(sessionId)}`, { timeoutMs: 30000 }),
   dashboardMedia: ({ status = 'Active', type, cursor } = {}) => {
     const q = new URLSearchParams({ status });
     if (type) q.set('type', type);

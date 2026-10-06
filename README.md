@@ -22,13 +22,47 @@ Tables: Customers, Events, Uploads, Orders. Each Event belongs to a Customer, ca
 Event Type, dates (Event, Uploads Close, Hosting End), Theme and its own dashboard password hash.
 Every guest page is generated from its Event record, so a new event goes live as soon as its record exists.
 
-## Status
+## How a customer gets their page
 
-- Working today (inherited from the MVP): guest QR page, reliable multi-file uploads with retry,
-  signed direct uploads, idempotent records, password dashboard, gallery, viewer, hide, ZIP download,
-  QR code, couple photo upload.
-- Next to build: self-serve event creation and Stripe checkout, per-event dashboard passwords and
-  themes, plan-based dates, storage moved to Cloudflare R2, marketing site at guestphotodrop.com.
+1. Home page (`/`) shows the plans. "Create your event" opens `/start`.
+2. `/start`: plan, event type, names, date, optional headline, color theme, email and dashboard password.
+3. `create-checkout` validates everything, creates the Customer and a **Draft** Event (password stored only
+   as a scrypt hash), then opens Stripe Checkout. Prices come from `netlify/lib/plans.mjs`, never the browser.
+4. After payment Stripe returns to `/welcome`. `checkout-status` confirms the payment and switches the event
+   to **Active** with its Uploads Close and Hosting End dates. `stripe-webhook` does the same thing from
+   Stripe's side. Both are safe to run more than once: one Order per payment.
+5. The welcome page shows the guest link, the QR code and `/dashboard/<link>`.
 
-The original single-event setup guide (Airtable fields, Cloudinary, Netlify, troubleshooting) still
-applies to the inherited code and is kept in docs/mvp-setup.md.
+Guest pages (`/event/<link>`) are built from the Event record and use the event's color theme.
+Status follows the plan dates: open until Uploads Close, closed after, expired after Hosting End.
+
+## Environment variables (Netlify)
+
+| Name | Secret | Value |
+|---|---|---|
+| AIRTABLE_ACCESS_TOKEN | yes | Token for the Guest Photo Drop base (records read and write) |
+| AIRTABLE_BASE_ID | no | Guest Photo Drop base ID |
+| AIRTABLE_EVENTS_TABLE_ID, AIRTABLE_UPLOADS_TABLE_ID, AIRTABLE_CUSTOMERS_TABLE_ID, AIRTABLE_ORDERS_TABLE_ID | no | Table IDs |
+| CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY | no | Cloudinary |
+| CLOUDINARY_API_SECRET | yes | Cloudinary |
+| STRIPE_SECRET_KEY | yes | `sk_test_...` while testing, `sk_live_...` at launch |
+| STRIPE_WEBHOOK_SECRET | yes | `whsec_...` from the webhook below |
+| SESSION_SECRET | yes | Long random string |
+| SITE_URL | no | e.g. `https://guestphotodrop.com` |
+
+## Stripe webhook
+
+Stripe dashboard > Developers > Webhooks > Add endpoint:
+`<SITE_URL>/.netlify/functions/stripe-webhook`, events `checkout.session.completed` and
+`checkout.session.async_payment_succeeded`. Copy its signing secret into `STRIPE_WEBHOOK_SECRET`.
+
+## Tests
+
+`npm test` runs the server tests offline (fake Airtable and fake Stripe).
+`npm run build && node tests/mock-server.mjs` then `python3 tests/ui-flow.py` runs the browser walkthrough.
+
+## Next steps
+
+Pro plan for planners and venues, moving storage to Cloudflare R2, confirmation emails, and a custom domain.
+
+The original single-event setup guide is kept in docs/mvp-setup.md for reference.

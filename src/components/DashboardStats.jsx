@@ -27,8 +27,8 @@ export default function DashboardStats({ event }) {
           <p className="stat-note">Guests who added their name</p>
         </div>
         <div>
-          <p className="stat-label">Gallery expires</p>
-          <p className="stat-value">{formatDate(event.expirationDate)}</p>
+          <p className="stat-label">Gallery hosted until</p>
+          <p className="stat-value">{formatDate(event.hostingEndDate)}</p>
           <p className={`pill pill-${event.status}`}>{STATUS_LABEL[event.status] || event.status}</p>
         </div>
       </div>

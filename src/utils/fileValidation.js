@@ -38,8 +38,8 @@ export async function validateFile(file, event) {
   if (!sniffed) {
     return { ok: false, kind: guessKind(file), reason: "This file type isn't supported. Please choose photos (JPG, PNG, HEIC, WEBP) or videos (MP4, MOV)." };
   }
-  if (sniffed.kind === 'image' && !event.allowPhotos) return { ok: false, kind: 'image', reason: 'Photos are not being collected for this wedding.' };
-  if (sniffed.kind === 'video' && !event.allowVideos) return { ok: false, kind: 'video', reason: 'Videos are not being collected for this wedding.' };
+  if (sniffed.kind === 'image' && !event.allowPhotos) return { ok: false, kind: 'image', reason: 'Photos are not being collected for this event.' };
+  if (sniffed.kind === 'video' && !event.allowVideos) return { ok: false, kind: 'video', reason: 'Videos are not being collected for this event.' };
 
   const maxMB = sniffed.kind === 'video' ? event.limits.maxVideoMB : event.limits.maxImageMB;
   if (file.size > maxMB * 1024 * 1024) {

@@ -10,11 +10,7 @@ import { validateFile, acceptAttribute } from '../utils/fileValidation.js';
 import { EVENT_STATUS_MESSAGES } from '../utils/errors.js';
 import { formatDate } from '../utils/format.js';
 import { Heart, HeartTrio, HeartDivider } from '../components/Hearts.jsx';
-
-function daysBetween(a, b) {
-  if (!a || !b) return null;
-  return Math.round((new Date(`${b}T00:00:00Z`) - new Date(`${a}T00:00:00Z`)) / 86400000);
-}
+import { useEventTheme, hostsWord } from '../utils/theme.js';
 
 export default function EventPage() {
   const { slug } = useParams();
@@ -31,6 +27,8 @@ export default function EventPage() {
       cancelled = true;
     };
   }, [slug]);
+
+  useEventTheme(state.event?.theme);
 
   useEffect(() => {
     if (state.event?.name) document.title = `${state.event.name} · Share your photos`;
@@ -49,7 +47,7 @@ export default function EventPage() {
     return (
       <main className="guest">
         <section className="card center-card">
-          <h1 className="names small-names">{notFound ? 'Wedding not found' : 'We couldn’t load this page'}</h1>
+          <h1 className="names small-names">{notFound ? 'Event not found' : 'We couldn’t load this page'}</h1>
           <p>{notFound ? 'Please check the link or scan the QR code again.' : 'Please check your connection and try again.'}</p>
           {!notFound && (
             <button type="button" className="btn btn-primary" onClick={() => window.location.reload()}>
@@ -89,7 +87,7 @@ function Hero({ event }) {
         </div>
       )}
       <h1 className="names">{event.name}</h1>
-      {event.weddingDate && <p className="date">{formatDate(event.weddingDate)}</p>}
+      {event.eventDate && <p className="date">{formatDate(event.eventDate)}</p>}
       <HeartDivider />
       {event.headline && <p className="headline">“{event.headline}”</p>}
       {event.welcomeMessage && <p className="welcome">{event.welcomeMessage}</p>}
@@ -103,7 +101,6 @@ function ActiveEvent({ event, slug }) {
   const [guestName, setGuestName] = useState('');
   const [notice, setNotice] = useState('');
   const accept = acceptAttribute(event);
-  const retention = daysBetween(event.weddingDate, event.expirationDate) || 90;
   const what = event.allowVideos && event.allowPhotos ? 'photos & videos' : event.allowVideos ? 'videos' : 'photos';
 
   const onFiles = async (files) => {
@@ -139,7 +136,8 @@ function ActiveEvent({ event, slug }) {
           </UploadButton>
           <p className="muted">No app or account needed.</p>
           <p className="fine-print">
-            Your {event.allowVideos && !event.allowPhotos ? 'videos' : 'photos'} will be available to the couple for {retention} days after the wedding.
+            Your {event.allowVideos && !event.allowPhotos ? 'videos' : 'photos'} go straight to {hostsWord(event.eventType)}
+            {event.hostingEndDate ? ` and stay available until ${formatDate(event.hostingEndDate)}.` : '.'}
           </p>
           <p className="fine-print">
             {event.allowPhotos && `Photos up to ${event.limits.maxImageMB} MB`}
@@ -219,7 +217,7 @@ function MiniHeader({ event }) {
     <header className="mini-header">
       <Heart size={16} />
       <p className="mini-names">{event.name}</p>
-      {event.weddingDate && <p className="mini-date">{formatDate(event.weddingDate)}</p>}
+      {event.eventDate && <p className="mini-date">{formatDate(event.eventDate)}</p>}
     </header>
   );
 }

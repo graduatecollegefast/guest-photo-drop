@@ -21,7 +21,7 @@ export function uploadErrorMessage(kind, mediaKind = 'image', serverMessage) {
 }
 
 export const EVENT_STATUS_MESSAGES = {
-  closed: 'Uploads for this wedding are now closed.',
-  expired: 'This wedding gallery has expired.',
+  closed: 'Uploads for this event are now closed.',
+  expired: 'This gallery has expired.',
   draft: 'This page isn’t open for photos yet. Please check back soon.',
 };

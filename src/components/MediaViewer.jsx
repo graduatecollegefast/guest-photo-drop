@@ -86,7 +86,7 @@ export default function MediaViewer({ items, index, onIndex, onClose, onToggleHi
             Your browser can’t play this video. Use Download original.
           </video>
         ) : (
-          <img key={item.id} src={item.displayUrl} alt={item.guestName ? `Photo from ${item.guestName}` : 'Wedding photo'} />
+          <img key={item.id} src={item.displayUrl} alt={item.guestName ? `Photo from ${item.guestName}` : 'Event photo'} />
         )}
       </div>
 

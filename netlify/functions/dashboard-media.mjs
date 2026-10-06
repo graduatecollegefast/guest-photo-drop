@@ -11,7 +11,7 @@ import { config } from '../lib/config.mjs';
 
 const PAGE_SIZE = 50;
 const FIELDS = [
-  'Upload ID', 'Guest Name', 'Cloudinary Public ID', 'Resource Type', 'Format', 'Version',
+  'Upload ID', 'Guest Name', 'Storage Key', 'Resource Type', 'Format', 'Version',
   'Original Filename', 'File Size', 'Width', 'Height', 'Duration', 'Status', 'Uploaded At',
 ];
 
@@ -48,14 +48,14 @@ export default handler('dashboard-media', async (req) => {
   }
 
   const items = page.records
-    .filter((rec) => rec.fields['Cloudinary Public ID'])
+    .filter((rec) => rec.fields['Storage Key'])
     .map((rec) => {
       const f = rec.fields;
       const item = {
         id: f['Upload ID'],
         type: f['Resource Type'] === 'video' ? 'video' : 'image',
         format: f['Format'] || (f['Resource Type'] === 'video' ? 'mp4' : 'jpg'),
-        publicId: f['Cloudinary Public ID'],
+        publicId: f['Storage Key'],
         version: f['Version'] || null,
       };
       return {

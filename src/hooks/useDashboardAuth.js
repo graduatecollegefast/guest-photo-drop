@@ -5,18 +5,18 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../services/api.js';
 
-export function useDashboardAuth() {
+export function useDashboardAuth(slug) {
   const [state, setState] = useState({ status: 'checking', event: null, error: null });
 
   const refresh = useCallback(async () => {
     try {
-      const res = await api.dashboardEvent();
+      const res = await api.dashboardEvent(slug);
       setState({ status: 'authed', event: res.event, error: null });
     } catch (err) {
       if (err.status === 401) setState({ status: 'anonymous', event: null, error: null });
       else setState((s) => ({ ...s, status: s.status === 'authed' ? 'authed' : 'error', error: err }));
     }
-  }, []);
+  }, [slug]);
 
   useEffect(() => {
     refresh();
@@ -24,7 +24,7 @@ export function useDashboardAuth() {
 
   const login = useCallback(
     async (password) => {
-      await api.login(password);
+      await api.login(slug, password);
       await refresh();
     },
     [refresh]

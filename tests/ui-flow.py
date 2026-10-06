@@ -71,8 +71,8 @@ with sync_playwright() as p:
     page.click("text=Upload more")
     page.wait_for_selector("text=Add your photos & videos")
 
-    for slug, text in [("closed-wedding", "Uploads for this wedding are now closed."), ("expired-wedding", "This wedding gallery has expired."),
-                       ("draft-wedding", "isn’t open for photos yet"), ("no-such-wedding", "Wedding not found")]:
+    for slug, text in [("closed-wedding", "Uploads for this event are now closed."), ("expired-wedding", "This gallery has expired."),
+                       ("draft-wedding", "isn’t open for photos yet"), ("no-such-wedding", "Event not found")]:
         page.goto(f"{BASE}/event/{slug}")
         page.wait_for_selector(f"text={text}")
         check(True, f"{slug} shows correct message")
@@ -81,10 +81,39 @@ with sync_playwright() as p:
     page.screenshot(path=f"{OUT}/iphone-6-closed.png")
     page.close()
 
+    # Marketing site and signup
+    h = browser.new_page(viewport={"width": 1280, "height": 900})
+    h.goto(BASE + "/")
+    h.wait_for_selector("text=Every guest’s photos. One private album.")
+    h.wait_for_timeout(400)
+    h.screenshot(path=f"{OUT}/site-1-home.png", full_page=True)
+    check(h.locator(".price-card").count() == 3, "home shows three plans")
+    h.click("text=Choose Wedding Drop")
+    h.wait_for_selector("text=Create your event")
+    h.fill("input[placeholder=Jordan]", "Jordan")
+    h.fill("input[placeholder=Taylor]", "Taylor")
+    h.fill("input[type=date]", "2027-06-12")
+    h.click("text=Blush")
+    h.fill("input[type=email]", "jordan@example.com")
+    h.fill("input[type=password]", "our secret pw")
+    check(h.locator("text=guestphotodrop.com/event/jordan-and-taylor").count() == 1, "guest link preview from names")
+    h.screenshot(path=f"{OUT}/site-2-start.png", full_page=True)
+    h.click("text=Continue to payment · $79")
+    h.wait_for_selector("text=You’re all set!")
+    check(h.locator("text=Open your dashboard").count() == 1, "welcome page after payment")
+    h.wait_for_timeout(500)
+    h.screenshot(path=f"{OUT}/site-3-welcome.png", full_page=True)
+    h.close()
+    mp = browser.new_page(viewport={"width": 390, "height": 844}, device_scale_factor=2, is_mobile=True)
+    mp.goto(BASE + "/")
+    mp.wait_for_selector(".home-title")
+    mp.screenshot(path=f"{OUT}/site-4-home-mobile.png", full_page=True)
+    mp.close()
+
     # Dashboard (desktop)
     d = browser.new_page(viewport={"width": 1280, "height": 900})
-    d.goto(BASE + "/dashboard")
-    d.wait_for_selector("text=Your wedding album")
+    d.goto(BASE + "/dashboard/jordan-and-taylor")
+    d.wait_for_selector("text=Your event album")
     d.fill("input[type=password]", "wrong password")
     d.click("button[type=submit]")
     d.wait_for_selector("text=That password is not right")
@@ -136,11 +165,11 @@ with sync_playwright() as p:
     g.close()
 
     d.click("text=Sign out")
-    d.wait_for_selector("text=Your wedding album")
+    d.wait_for_selector("text=Your event album")
     check(True, "logout returns to login")
 
     m = browser.new_page(viewport={"width": 390, "height": 844}, device_scale_factor=2, is_mobile=True, has_touch=True)
-    m.goto(BASE + "/dashboard")
+    m.goto(BASE + "/dashboard/jordan-and-taylor")
     m.fill("input[type=password]", "correct horse battery")
     m.click("button[type=submit]")
     m.wait_for_selector(".tile img")

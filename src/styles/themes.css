@@ -1,0 +1,19 @@
+/* Per-event color themes. The event's Theme field sets <html data-theme="...">. */
+[data-theme='classic-ivory'] {
+  --primary: #2f2723; --primary-hover: #1f1916; --secondary: #e9dccb; --accent: #a8875a; --accent-soft: #f3e8d6;
+  --silver: #b9a688; --silver-light: #efe6da; --background: #f8f3ec; --text: #2f2723; --text-muted: #6e625a; --border: #e3d6c6;
+  --silver-gradient: linear-gradient(90deg, #e6dccb 0%, #b9a688 40%, #f3ece1 60%, #b9a688 85%, #e6dccb 100%);
+  --brand-gradient: linear-gradient(90deg, #2f2723 0%, #a8875a 100%);
+}
+[data-theme='blush'] {
+  --primary: #8a3b55; --primary-hover: #6f2e44; --secondary: #f3e1e6; --accent: #c4566f; --accent-soft: #f8e3e8;
+  --silver: #d3aeb9; --silver-light: #f6e8ec; --background: #fbf4f5; --text: #3a2229; --text-muted: #6f5560; --border: #eed6dd;
+  --silver-gradient: linear-gradient(90deg, #f1dfe4 0%, #d3aeb9 40%, #fbf1f4 60%, #d3aeb9 85%, #f1dfe4 100%);
+  --brand-gradient: linear-gradient(90deg, #8a3b55 0%, #c4566f 100%);
+}
+[data-theme='midnight'] {
+  --primary: #1d2a4d; --primary-hover: #141e3a; --secondary: #e3e6ee; --accent: #b8923a; --accent-soft: #f2ead7;
+  --silver: #a9b0c2; --silver-light: #e6e9f0; --background: #f4f5f8; --text: #1a2035; --text-muted: #545b70; --border: #d8dce6;
+  --silver-gradient: linear-gradient(90deg, #d9dde7 0%, #a9b0c2 40%, #f0f2f6 60%, #a9b0c2 85%, #d9dde7 100%);
+  --brand-gradient: linear-gradient(90deg, #1d2a4d 0%, #b8923a 100%);
+}

@@ -1,4 +1,6 @@
 import React, { useEffect, useState } from 'react';
+import { useParams } from 'react-router-dom';
+import { useEventTheme } from '../utils/theme.js';
 import { useDashboardAuth } from '../hooks/useDashboardAuth.js';
 import DashboardLogin from './DashboardLogin.jsx';
 import DashboardStats from '../components/DashboardStats.jsx';
@@ -9,12 +11,14 @@ import { formatDate } from '../utils/format.js';
 import { Heart } from '../components/Hearts.jsx';
 
 export default function Dashboard() {
-  const auth = useDashboardAuth();
+  const { slug } = useParams();
+  const auth = useDashboardAuth(slug);
+  useEventTheme(auth.event?.theme);
   const [view, setView] = useState('gallery');
   const [expired, setExpired] = useState(false);
 
   useEffect(() => {
-    document.title = auth.event ? `${auth.event.name} · Album` : 'Wedding album';
+    document.title = auth.event ? `${auth.event.name} · Album` : 'Event album';
   }, [auth.event]);
 
   if (auth.status === 'checking') return <div className="page-loading" role="status">Loading…</div>;
@@ -57,7 +61,7 @@ export default function Dashboard() {
           <h1 className="names dash-names">
             {event.name} <Heart size={26} className="title-heart" />
           </h1>
-          <p className="date">{formatDate(event.weddingDate)}</p>
+          <p className="date">{formatDate(event.eventDate)}</p>
         </div>
         <button type="button" className="btn btn-link" onClick={auth.logout}>
           Sign out

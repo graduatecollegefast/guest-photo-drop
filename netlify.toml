@@ -7,7 +7,7 @@
   NODE_VERSION = "20"
   # These are identifiers, not secrets. Real secrets (Airtable token, Cloudinary API secret,
   # password hash, session secret) stay covered by Netlify's secrets scan.
-  SECRETS_SCAN_OMIT_KEYS = "EVENT_SLUG,AIRTABLE_BASE_ID,AIRTABLE_EVENTS_TABLE_ID,AIRTABLE_UPLOADS_TABLE_ID,CLOUDINARY_CLOUD_NAME,CLOUDINARY_API_KEY"
+  SECRETS_SCAN_OMIT_KEYS = "SITE_URL,AIRTABLE_BASE_ID,AIRTABLE_EVENTS_TABLE_ID,AIRTABLE_UPLOADS_TABLE_ID,AIRTABLE_CUSTOMERS_TABLE_ID,AIRTABLE_ORDERS_TABLE_ID,CLOUDINARY_CLOUD_NAME,CLOUDINARY_API_KEY"
 
 [functions]
   node_bundler = "esbuild"
@@ -23,12 +23,32 @@
 [[headers]]
   for = "/*"
   [headers.values]
-    X-Robots-Tag = "noindex, nofollow, noarchive"
     X-Frame-Options = "DENY"
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "no-referrer"
     Permissions-Policy = "camera=(), microphone=(), geolocation=()"
     Content-Security-Policy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://res.cloudinary.com; media-src 'self' blob: https://res.cloudinary.com; connect-src 'self' https://api.cloudinary.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+
+# Event pages, dashboards and receipts are private: never indexed. The home page is public.
+[[headers]]
+  for = "/event/*"
+  [headers.values]
+    X-Robots-Tag = "noindex, nofollow, noarchive"
+
+[[headers]]
+  for = "/dashboard"
+  [headers.values]
+    X-Robots-Tag = "noindex, nofollow, noarchive"
+
+[[headers]]
+  for = "/dashboard/*"
+  [headers.values]
+    X-Robots-Tag = "noindex, nofollow, noarchive"
+
+[[headers]]
+  for = "/welcome"
+  [headers.values]
+    X-Robots-Tag = "noindex, nofollow, noarchive"
 
 [[headers]]
   for = "/assets/*"

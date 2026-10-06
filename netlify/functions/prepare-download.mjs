@@ -27,13 +27,13 @@ export default handler('prepare-download', async (req) => {
 
   const records = await listAll(config().airtable.uploadsTable, {
     filterByFormula: `AND({Event Key} = ${formulaString(event.eventId)}, {Status} = 'Active')`,
-    fields: ['Cloudinary Public ID', 'Resource Type', 'Uploaded At'],
+    fields: ['Storage Key', 'Resource Type', 'Uploaded At'],
     sort: [{ field: 'Uploaded At', direction: 'asc' }],
   });
 
   const byType = { image: [], video: [] };
   for (const rec of records) {
-    const pid = rec.fields['Cloudinary Public ID'];
+    const pid = rec.fields['Storage Key'];
     const type = rec.fields['Resource Type'] === 'video' ? 'video' : 'image';
     if (pid) byType[type].push(pid);
   }
