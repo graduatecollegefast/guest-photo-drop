@@ -55,7 +55,7 @@ export function useUploadQueue({ slug, concurrency = DEFAULT_CONCURRENCY }) {
   const running = useRef(0);
   const guestName = useRef('');
   const sessionId = useMemo(getSessionId, []);
-  const sigRef = useRef({ data: null, promise: null });
+  const sigRef = useRef({ data: null, promise: null, reserved: 0 });
   const mounted = useRef(true);
 
   const update = useCallback(
@@ -75,6 +75,7 @@ export function useUploadQueue({ slug, concurrency = DEFAULT_CONCURRENCY }) {
         .uploadSignature(slug, sessionId)
         .then((res) => {
           s.data = res.upload;
+          s.reserved = 0;
           return s.data;
         })
         .finally(() => {
@@ -120,6 +121,16 @@ export function useUploadQueue({ slug, concurrency = DEFAULT_CONCURRENCY }) {
       try {
         let result = item.result;
         if (!result) {
+          // Album storage cap: skip files that won't fit in the space left.
+          const sig = await getSignature(false);
+          const size = item.file ? item.file.size : 0;
+          if (typeof sig.remainingBytes === 'number') {
+            if (size > sig.remainingBytes - sigRef.current.reserved) {
+              update(item.id, { status: 'failed', errorKind: 'album_full', error: uploadErrorMessage('album_full', item.kind) });
+              return;
+            }
+            sigRef.current.reserved += size;
+          }
           let attempt = 0;
           for (;;) {
             try {
@@ -160,7 +171,7 @@ export function useUploadQueue({ slug, concurrency = DEFAULT_CONCURRENCY }) {
         let serverMessage;
         if (err instanceof UploadError) kind = err.kind === 'stale' ? 'network' : err.kind;
         else if (err instanceof ApiError) {
-          if (['event_closed', 'event_expired', 'event_not_open', 'event_not_found'].includes(err.code)) {
+          if (['event_closed', 'event_expired', 'event_not_open', 'event_not_found', 'album_full'].includes(err.code)) {
             kind = 'event';
             serverMessage = err.message;
           } else if (err.code === 'offline') kind = 'offline';

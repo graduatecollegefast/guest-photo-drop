@@ -3,7 +3,7 @@
 // display and original-download URLs; the browser never loads originals in the grid.
 
 import { handler, json, requireMethod, ensureConfigured, HttpError } from '../lib/http.mjs';
-import { requireSession } from '../lib/session.mjs';
+import { requireSession, assertCurrentPassword } from '../lib/session.mjs';
 import { findEventBySlug } from '../lib/events.mjs';
 import { listRecords, formulaString } from '../lib/airtable.mjs';
 import { mediaUrls } from '../lib/cloudinary.mjs';
@@ -20,6 +20,8 @@ export default handler('dashboard-media', async (req) => {
   ensureConfigured(['SESSION_SECRET', 'AIRTABLE_ACCESS_TOKEN', 'AIRTABLE_BASE_ID', 'AIRTABLE_UPLOADS_TABLE_ID', 'CLOUDINARY_CLOUD_NAME']);
   const session = requireSession(req);
   const event = await findEventBySlug(session.eventSlug);
+  assertCurrentPassword(session, event);
+  if (event.filesDeletedOn) return json({ ok: true, items: [], nextCursor: null, deleted: true });
 
   const q = new URL(req.url).searchParams;
   const status = q.get('status') === 'Hidden' ? 'Hidden' : 'Active';

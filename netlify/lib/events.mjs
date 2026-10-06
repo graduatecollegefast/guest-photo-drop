@@ -3,7 +3,7 @@
 import { config, IMAGE_FORMATS, VIDEO_FORMATS } from './config.mjs';
 import { listRecords, formulaString } from './airtable.mjs';
 import { HttpError, SLUG_RE } from './http.mjs';
-import { DEFAULT_COLORS, DEFAULT_ICON } from './plans.mjs';
+import { DEFAULT_COLORS, DEFAULT_ICON, DELETE_AFTER_DAYS, storageCapBytes } from './plans.mjs';
 
 const CACHE_MS = 30_000; // Changes in Airtable take effect within 30 seconds.
 const cache = new Map();
@@ -42,6 +42,15 @@ export function normalize(record) {
     maxFilesPerUpload: Number(f['Maximum Files Per Upload']) > 0 ? Number(f['Maximum Files Per Upload']) : 50,
     passwordHash: f['Dashboard Password Hash'] || '', // internal only
     stripeSessionId: f['Stripe Session ID'] || '', // internal only
+    ownerEmail: f['Owner Email'] || '', // internal only
+    resetTokenHash: f['Reset Token Hash'] || '', // internal only
+    resetTokenExpires: f['Reset Token Expires'] || null, // internal only
+    referralCode: f['Referral Code'] || '',
+    appliedExtensions: String(f['Applied Extensions'] || '').split(/\s+/).filter(Boolean),
+    notice30Sent: f['Deletion Notice 30 Sent'] || null,
+    notice7Sent: f['Deletion Notice 7 Sent'] || null,
+    filesDeletedOn: f['Files Deleted On'] || null,
+    storageBytes: Number(f['Storage Bytes']) || 0,
     counts: {
       total: Number(f['Upload Count']) || 0,
       photos: Number(f['Photo Count']) || 0,
@@ -95,6 +104,17 @@ export async function findEventBySlug(slug, { fresh = false } = {}) {
 
 export function allowedFormats(event) {
   return [...(event.allowPhotos ? IMAGE_FORMATS : []), ...(event.allowVideos ? VIDEO_FORMATS : [])];
+}
+
+// Files are deleted DELETE_AFTER_DAYS after hosting ends.
+export function deleteOnDate(event) {
+  return event.hostingEndDate ? addDays(event.hostingEndDate, DELETE_AFTER_DAYS) : null;
+}
+
+export function storageInfo(event) {
+  const capBytes = storageCapBytes(event.plan);
+  const usedBytes = event.filesDeletedOn ? 0 : event.storageBytes;
+  return { usedBytes, capBytes, full: usedBytes >= capBytes };
 }
 
 export function clearEventCache(slug) {

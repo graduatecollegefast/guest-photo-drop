@@ -2,7 +2,7 @@
 // Sets the Upload status to Hidden (or back to Active). Never deletes the Cloudinary file.
 
 import { handler, json, requireMethod, readJson, ensureConfigured, HttpError } from '../lib/http.mjs';
-import { requireSession } from '../lib/session.mjs';
+import { requireSession, assertCurrentPassword } from '../lib/session.mjs';
 import { findEventBySlug } from '../lib/events.mjs';
 import { listRecords, updateRecord, formulaString } from '../lib/airtable.mjs';
 import { config } from '../lib/config.mjs';
@@ -16,6 +16,7 @@ export default handler('hide-media', async (req) => {
     throw new HttpError(400, 'bad_request', 'Please reload and try again.');
   }
   const event = await findEventBySlug(session.eventSlug);
+  assertCurrentPassword(session, event);
   const { uploadsTable } = config().airtable;
 
   const found = await listRecords(uploadsTable, {

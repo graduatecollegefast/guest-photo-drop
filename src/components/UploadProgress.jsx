@@ -68,7 +68,7 @@ export default function UploadProgress({ items, stats, onRetry, onRetryAll, onFi
                 {item.name}
                 {item.status === 'failed' && <span className="file-error">{item.error}</span>}
               </span>
-              {item.status === 'failed' && item.errorKind !== 'too_large' && item.errorKind !== 'unsupported' ? (
+              {item.status === 'failed' && item.errorKind !== 'too_large' && item.errorKind !== 'unsupported' && item.errorKind !== 'album_full' ? (
                 <button type="button" className="btn btn-small" onClick={() => onRetry(item.id)} aria-label={`Try ${item.name} again`}>
                   Try again
                 </button>

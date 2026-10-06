@@ -7,7 +7,7 @@ import { handler, json, requireMethod, readJson, ensureConfigured, HttpError, cl
 import { PLANS, EVENT_TYPES, COLORS, ICONS, DEFAULT_ICON } from '../lib/plans.mjs';
 import { hashPassword } from '../lib/session.mjs';
 import { createRecord, updateRecord } from '../lib/airtable.mjs';
-import { uniqueSlug, findOrCreateCustomer, randomToken } from '../lib/orders.mjs';
+import { uniqueSlug, findOrCreateCustomer, randomToken, findPartner } from '../lib/orders.mjs';
 import { createCheckoutSession } from '../lib/stripe.mjs';
 import { todayIn, addDays } from '../lib/events.mjs';
 import { config } from '../lib/config.mjs';
@@ -47,7 +47,9 @@ export function validateSignup(body, today) {
   if (colors.length < 2 || colors.length > 3) throw bad('Please pick 2 or 3 colors.');
   const icon = ICONS.includes(body.icon) ? body.icon : DEFAULT_ICON[eventType];
   const headline = cleanText(body.headline, 100) || DEFAULT_HEADLINES[eventType];
-  return { plan, eventType, eventName, eventDate, email, password, colors, icon, headline };
+  if (body.agreeTerms !== true) throw bad('Please agree to the Terms of Service and Privacy Policy.');
+  const ref = typeof body.ref === 'string' ? body.ref.trim().toLowerCase().slice(0, 40) : '';
+  return { plan, eventType, eventName, eventDate, email, password, colors, icon, headline, ref };
 }
 
 export default handler('create-checkout', async (req) => {
@@ -66,6 +68,8 @@ export default handler('create-checkout', async (req) => {
     customerType: form.eventType === 'Wedding' ? 'Couple' : 'Host',
   });
   const eventId = `evt_${randomToken(12)}`;
+  // Partner referral (?ref=planner-name): only real, active partners are recorded.
+  const partner = form.ref ? await findPartner(form.ref).catch(() => null) : null;
   const record = await createRecord(c.airtable.eventsTable, {
     'Event ID': eventId,
     'Event Name': form.eventName,
@@ -83,6 +87,8 @@ export default handler('create-checkout', async (req) => {
     'Dashboard Password Hash': hashPassword(form.password),
     'Owner Email': form.email,
     Customer: [customerId],
+    'Terms Accepted At': new Date().toISOString(),
+    'Referral Code': partner ? partner.code : undefined,
   });
 
   const session = await createCheckoutSession(

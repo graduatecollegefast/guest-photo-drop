@@ -8,17 +8,17 @@ from it: its own code, its own Airtable base, its own storage folders and its ow
 
 ## Plans (one-time per event unless noted)
 
-| Plan | Price | Uploads open | Gallery hosted |
-|---|---|---|---|
-| Party Drop | $29 | 3 months | 6 months |
-| Wedding Drop | $79 | 12 months | 12 months |
-| Forever Keepsake | $149 | 12 months | 2 years |
-| Extend hosting | $19 | | +12 months |
-| Pro (planners, venues, photographers) | $49 / month | up to 8 events a month | per event plan |
+| Plan | Price | Uploads open | Gallery hosted | Storage |
+|---|---|---|---|---|
+| Party Drop | $29 | 3 months | 6 months | 5 GB |
+| Wedding Drop | $79 | 12 months | 12 months | 25 GB |
+| Forever Keepsake | $149 | 12 months | 2 years | 50 GB |
+| Extend hosting | $19 | | +12 months | |
+| Pro (planners, venues, photographers) | $49 / month | up to 8 events a month | per event plan | |
 
 ## Airtable base: Guest Photo Drop
 
-Tables: Customers, Events, Uploads, Orders. Each Event belongs to a Customer, carries its Plan,
+Tables: Customers, Events, Uploads, Orders, Partners. Each Event belongs to a Customer, carries its Plan,
 Event Type, dates (Event, Uploads Close, Hosting End), Colors, Icon and its own dashboard password hash.
 (The older Theme field is no longer used.)
 Every guest page is generated from its Event record, so a new event goes live as soon as its record exists.
@@ -42,6 +42,41 @@ with contrast checked so every one of the 286 possible picks stays readable (`te
 Old `/event/<link>` addresses redirect to `/e/<link>`.
 Status follows the plan dates: open until Uploads Close, closed after, expired after Hosting End.
 
+## Host dashboard extras
+
+- **Sign-in limit:** 10 password attempts per 15 minutes per device and event (`lib/ratelimit.mjs`, stored in Netlify Blobs).
+- **Forgot password:** emails a one-time link to the Owner Email (valid 1 hour). Resetting signs out every other device.
+- **Edit your page:** headline, welcome message and 2 or 3 colors (`update-event`).
+- **Extend hosting $19:** Stripe Checkout; 12 months are added once Stripe confirms payment (webhook and return page, applied once).
+- **Storage cap:** uploads stop when the album reaches its plan limit (`Storage Bytes` rollup on Events).
+- Help for hosts and the support email are linked from the sign-in page and the dashboard.
+
+## Daily maintenance (scheduled function)
+
+`daily-maintenance` runs every day. Files are deleted 30 days after the Hosting End Date. The host gets emails
+30 days and 7 days before. Files are only deleted once the 7-day email has gone out at least 7 days earlier, so
+without email set up nothing is ever deleted. Only `events/<Event ID>/` in Cloudinary is removed; the Event is
+marked Expired with Files Deleted On.
+
+## Admin page
+
+`/admin`, protected by `ADMIN_PASSWORD`. Shows every event with revenue (paid orders) and storage used, plus
+buttons to extend hosting 12 months (no charge), send a password reset link, and close uploads.
+
+## Partner referrals
+
+Add a planner or venue to the Partners table with a Ref Code (for example `bloom-planning`) and tick Active.
+Their link is `<SITE_URL>/?ref=bloom-planning` (any page works). The browser remembers the code for 60 days and
+sends it with checkout; only active partners are recorded. The order gets the Partner link, and its
+Commission field is 20% of paid orders. Pay partners monthly from the **Partner Payouts** interface in Airtable
+(grouped by Payout Month and Partner, with Not paid yet and Paid out tabs); tick Commission Paid once paid.
+
+## Legal and help
+
+`/terms`, `/privacy`, `/refunds` and `/help` (guest guides at `/help#guests`, host guides at `/help#hosts`).
+Linked from the footer; checkout requires agreeing to the Terms and Privacy Policy (saved as Terms Accepted At).
+The guest upload page links to the guest guides.
+
 ## Environment variables (Netlify)
 
 | Name | Secret | Value |
@@ -55,6 +90,11 @@ Status follows the plan dates: open until Uploads Close, closed after, expired a
 | STRIPE_WEBHOOK_SECRET | yes | `whsec_...` from the webhook below |
 | SESSION_SECRET | yes | Long random string |
 | SITE_URL | no | e.g. `https://guestphotodrop.com` |
+| AIRTABLE_PARTNERS_TABLE_ID | no | Partners table ID (referrals) |
+| ADMIN_PASSWORD | yes | Password for `/admin` |
+| RESEND_API_KEY | yes | Resend API key for password reset and deletion emails |
+| EMAIL_FROM | no | e.g. `Guest Photo Drop <hello@guestphotodrop.com>` (a domain verified in Resend) |
+| SUPPORT_EMAIL | no | Reply-to address on emails (default theeverydayearners@gmail.com) |
 
 ## Stripe webhook
 
@@ -64,11 +104,11 @@ Stripe dashboard > Developers > Webhooks > Add endpoint:
 
 ## Tests
 
-`npm test` runs the server tests offline (fake Airtable and fake Stripe).
+`npm test` runs the server tests offline (fake Airtable, Stripe, Resend and Cloudinary).
 `npm run build && node tests/mock-server.mjs` then `python3 tests/ui-flow.py` runs the browser walkthrough.
 
 ## Next steps
 
-Pro plan for planners and venues, moving storage to Cloudflare R2, confirmation emails, and a custom domain.
+Pro plan for planners and venues, moving storage to Cloudflare R2, purchase confirmation emails, and a custom domain.
 
 The original single-event setup guide is kept in docs/mvp-setup.md for reference.

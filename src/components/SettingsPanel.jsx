@@ -1,8 +1,39 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { formatDate } from '../utils/format.js';
+import { formatDate, formatBytes } from '../utils/format.js';
 import CoverPhotoPanel from './CoverPhotoPanel.jsx';
+import EditEventPanel from './EditEventPanel.jsx';
+import { api } from '../services/api.js';
+import { SUPPORT_EMAIL } from '../utils/support.js';
 
-// Read-only event settings plus the guest QR code. Settings are changed in Airtable (see README).
+// "Extend hosting $19": sends the host to Stripe; hosting is extended once payment clears.
+function ExtendHosting({ event, onUnauthorized }) {
+  const [state, setState] = useState({ status: 'idle', message: '' });
+  if (!event.extension || !event.extension.available) return null;
+  const go = async () => {
+    setState({ status: 'loading', message: '' });
+    try {
+      const res = await api.extendHosting();
+      window.location.assign(res.url);
+    } catch (err) {
+      if (err.status === 401) return onUnauthorized();
+      setState({ status: 'error', message: err.message || 'We couldn’t open checkout. Please try again.' });
+    }
+  };
+  return (
+    <div className="extend-box">
+      <h3 className="sub-title">Keep your gallery longer</h3>
+      <p className="muted">
+        Your gallery is hosted until {formatDate(event.hostingEndDate)}. Add {event.extension.months} more months for ${event.extension.price}.
+      </p>
+      {state.message && <p className="form-error" role="alert">{state.message}</p>}
+      <button type="button" className="btn btn-primary" onClick={go} disabled={state.status === 'loading'}>
+        {state.status === 'loading' ? 'Opening secure checkout…' : `Extend hosting $${event.extension.price}`}
+      </button>
+    </div>
+  );
+}
+
+// Event settings: page edits, cover photo, QR code, hosting extension and plan details.
 export default function SettingsPanel({ event, onChanged, onUnauthorized }) {
   const guestUrl = `${window.location.origin}/e/${event.slug}`;
   const canvasRef = useRef(null);
@@ -46,6 +77,8 @@ export default function SettingsPanel({ event, onChanged, onUnauthorized }) {
 
       <CoverPhotoPanel event={event} onChanged={onChanged} onUnauthorized={onUnauthorized} />
 
+      <EditEventPanel event={event} onChanged={onChanged} onUnauthorized={onUnauthorized} />
+
       <div className="qr-block">
         <canvas ref={canvasRef} className="qr" aria-label={`QR code for ${guestUrl}`} role="img" />
         <div>
@@ -62,17 +95,23 @@ export default function SettingsPanel({ event, onChanged, onUnauthorized }) {
         </div>
       </div>
 
+      <ExtendHosting event={event} onUnauthorized={onUnauthorized} />
+
       <dl className="settings-list">
         <div><dt>Status</dt><dd>{event.status}</dd></div>
         <div><dt>Plan</dt><dd>{event.plan}</dd></div>
         <div><dt>Event date</dt><dd>{formatDate(event.eventDate)}</dd></div>
         <div><dt>Uploads close</dt><dd>{formatDate(event.uploadsCloseDate)}</dd></div>
         <div><dt>Gallery hosted until</dt><dd>{formatDate(event.hostingEndDate)}</dd></div>
+        {event.deleteOnDate && !event.filesDeletedOn && <div><dt>Files deleted on</dt><dd>{formatDate(event.deleteOnDate)}</dd></div>}
+        {event.storage && <div><dt>Storage used</dt><dd className="no-cap">{formatBytes(event.storage.usedBytes)} of {formatBytes(event.storage.capBytes)}</dd></div>}
         <div><dt>Photos</dt><dd>{event.allowPhotos ? `Allowed, up to ${event.limits.maxImageMB} MB each` : 'Off'}</dd></div>
         <div><dt>Videos</dt><dd>{event.allowVideos ? `Allowed, up to ${event.limits.maxVideoMB} MB each` : 'Off'}</dd></div>
         <div><dt>Files per upload</dt><dd>{event.maxFilesPerUpload}</dd></div>
       </dl>
-      <p className="muted small">To change these settings, contact Guest Photo Drop support. Changes apply within a minute.</p>
+      <p className="muted small">
+        To change anything else here, email <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>.
+      </p>
     </section>
   );
 }

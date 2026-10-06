@@ -14,6 +14,7 @@ export function config() {
       uploadsTable: process.env.AIRTABLE_UPLOADS_TABLE_ID || '',
       customersTable: process.env.AIRTABLE_CUSTOMERS_TABLE_ID || '',
       ordersTable: process.env.AIRTABLE_ORDERS_TABLE_ID || '',
+      partnersTable: process.env.AIRTABLE_PARTNERS_TABLE_ID || '',
     },
     cloudinary: {
       cloudName: process.env.CLOUDINARY_CLOUD_NAME || '',
@@ -51,6 +52,8 @@ export function missingConfig(keys) {
     AIRTABLE_UPLOADS_TABLE_ID: c.airtable.uploadsTable,
     AIRTABLE_CUSTOMERS_TABLE_ID: c.airtable.customersTable,
     AIRTABLE_ORDERS_TABLE_ID: c.airtable.ordersTable,
+    AIRTABLE_PARTNERS_TABLE_ID: c.airtable.partnersTable,
+    ADMIN_PASSWORD: process.env.ADMIN_PASSWORD || '',
     CLOUDINARY_CLOUD_NAME: c.cloudinary.cloudName,
     CLOUDINARY_API_KEY: c.cloudinary.apiKey,
     CLOUDINARY_API_SECRET: c.cloudinary.apiSecret,

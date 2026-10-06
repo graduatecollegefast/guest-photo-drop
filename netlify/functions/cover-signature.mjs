@@ -3,7 +3,7 @@
 // event's cover folder. Guests never get this signature.
 
 import { handler, json, requireMethod, ensureConfigured } from '../lib/http.mjs';
-import { requireSession } from '../lib/session.mjs';
+import { requireSession, assertCurrentPassword } from '../lib/session.mjs';
 import { findEventBySlug, coverFolder } from '../lib/events.mjs';
 import { signParams } from '../lib/cloudinary.mjs';
 import { config, IMAGE_FORMATS } from '../lib/config.mjs';
@@ -13,6 +13,7 @@ export default handler('cover-signature', async (req) => {
   ensureConfigured(['SESSION_SECRET', 'AIRTABLE_ACCESS_TOKEN', 'AIRTABLE_BASE_ID', 'AIRTABLE_EVENTS_TABLE_ID', 'CLOUDINARY_CLOUD_NAME', 'CLOUDINARY_API_KEY', 'CLOUDINARY_API_SECRET']);
   const session = requireSession(req);
   const event = await findEventBySlug(session.eventSlug);
+  assertCurrentPassword(session, event);
   const { cloudName, apiKey } = config().cloudinary;
   const params = {
     timestamp: Math.floor(Date.now() / 1000),

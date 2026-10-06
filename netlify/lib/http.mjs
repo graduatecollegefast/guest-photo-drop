@@ -80,3 +80,15 @@ export function cleanText(value, max = 100) {
   // Remove control characters, collapse whitespace.
   return value.replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max);
 }
+
+// Like cleanText but keeps line breaks (for longer messages).
+export function cleanMultiline(value, max = 500) {
+  if (typeof value !== 'string') return '';
+  return value
+    .replace(/\r\n?/g, '\n')
+    .replace(/[\u0000-\u0009\u000b-\u001f\u007f]/g, ' ')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+    .slice(0, max);
+}

@@ -13,6 +13,8 @@ export function uploadErrorMessage(kind, mediaKind = 'image', serverMessage) {
       return `Your ${noun} uploaded but isn't in the album yet. Tap to try again.`;
     case 'event':
       return serverMessage || 'Uploads are not open right now.';
+    case 'album_full':
+      return 'This album is full, so this file can’t be added. Please let the hosts know.';
     case 'network':
     case 'cloudinary':
     default:

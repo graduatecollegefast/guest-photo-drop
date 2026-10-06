@@ -8,6 +8,7 @@ export const PLANS = {
     priceCents: 2900,
     uploadMonths: 3,
     hostingMonths: 6,
+    storageGB: 5,
     description: 'Uploads open 3 months, gallery hosted 6 months',
   },
   wedding: {
@@ -16,6 +17,7 @@ export const PLANS = {
     priceCents: 7900,
     uploadMonths: 12,
     hostingMonths: 12,
+    storageGB: 25,
     description: 'Uploads open 12 months, gallery hosted 12 months',
   },
   forever: {
@@ -24,9 +26,31 @@ export const PLANS = {
     priceCents: 14900,
     uploadMonths: 12,
     hostingMonths: 24,
+    storageGB: 50,
     description: 'Uploads open 12 months, gallery hosted 2 years',
   },
 };
+
+// Add-on sold from the host dashboard: 12 more months of hosting for $19.
+export const EXTENSION = {
+  key: 'extension',
+  name: 'Extend Hosting',
+  priceCents: 1900,
+  months: 12,
+  description: 'Keeps your gallery online 12 more months',
+};
+
+// Files are deleted this many days after the hosting end date (hosts get emails 30 and 7 days before).
+export const DELETE_AFTER_DAYS = 30;
+
+const GB = 1024 ** 3;
+export function planByName(name) {
+  return Object.values(PLANS).find((p) => p.name === name) || null;
+}
+// Storage cap in bytes for an event's plan. Unknown plans get the Wedding Drop cap.
+export function storageCapBytes(planName) {
+  return (planByName(planName) || PLANS.wedding).storageGB * GB;
+}
 
 export const EVENT_TYPES = ['Wedding', 'Birthday', 'Shower', 'Graduation', 'Reunion', 'Other'];
 // The 12 color dots customers pick 2 or 3 from (most-used wedding colors).

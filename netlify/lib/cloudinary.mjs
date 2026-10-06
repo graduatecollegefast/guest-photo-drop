@@ -75,3 +75,29 @@ export function archiveDownloadUrl({ resourceType, publicIds, name }) {
   url.searchParams.set('signature', signature);
   return url.toString();
 }
+
+// Permanently deletes every file under a folder prefix (all resource types).
+// Cloudinary deletes up to 1000 per call and reports `partial` when more remain.
+export async function deleteByPrefix(prefix) {
+  if (!/^events\/evt_[a-z0-9]{6,40}\/$/.test(prefix)) {
+    throw new Error(`refusing to delete unexpected prefix "${prefix}"`);
+  }
+  const { cloudName, apiKey, apiSecret } = config().cloudinary;
+  const auth = `Basic ${Buffer.from(`${apiKey}:${apiSecret}`).toString('base64')}`;
+  let deleted = 0;
+  for (const type of ['image', 'video', 'raw']) {
+    let cursor;
+    for (let round = 0; round < 50; round++) {
+      const url = new URL(`https://api.cloudinary.com/v1_1/${cloudName}/resources/${type}/upload`);
+      url.searchParams.set('prefix', prefix);
+      if (cursor) url.searchParams.set('next_cursor', cursor);
+      const res = await fetch(url, { method: 'DELETE', headers: { Authorization: auth } });
+      if (!res.ok) throw new Error(`Cloudinary delete ${type} ${res.status}: ${(await res.text()).slice(0, 300)}`);
+      const data = await res.json();
+      deleted += Object.values(data.deleted || {}).filter((v) => v === 'deleted').length;
+      if (!data.partial) break;
+      cursor = data.next_cursor;
+    }
+  }
+  return { deleted };
+}

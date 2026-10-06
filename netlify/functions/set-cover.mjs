@@ -4,7 +4,7 @@
 // Saves a display-ready URL (cropped 4:3, compressed) so guests on weak signal load it fast.
 
 import { handler, json, requireMethod, readJson, ensureConfigured, HttpError } from '../lib/http.mjs';
-import { requireSession } from '../lib/session.mjs';
+import { requireSession, assertCurrentPassword } from '../lib/session.mjs';
 import { findEventBySlug, coverFolder, clearEventCache } from '../lib/events.mjs';
 import { verifyUploadResponse } from '../lib/cloudinary.mjs';
 import { updateRecord } from '../lib/airtable.mjs';
@@ -20,6 +20,7 @@ export default handler('set-cover', async (req) => {
   const session = requireSession(req);
   const body = await readJson(req, 20000);
   const event = await findEventBySlug(session.eventSlug, { fresh: true });
+  assertCurrentPassword(session, event);
   const { eventsTable } = config().airtable;
 
   if (body.remove === true) {

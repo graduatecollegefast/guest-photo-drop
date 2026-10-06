@@ -17,6 +17,8 @@ process.env.AIRTABLE_ORDERS_TABLE_ID = 'tblOrders';
 process.env.STRIPE_SECRET_KEY = 'sk_test_fake';
 process.env.STRIPE_WEBHOOK_SECRET = 'whsec_test';
 process.env.SITE_URL = 'https://guestphotodrop.test';
+process.env.AIRTABLE_PARTNERS_TABLE_ID = 'tblPartners';
+process.env.ADMIN_PASSWORD = 'owner admin pass';
 
 const { signParams, verifyUploadResponse, archiveDownloadUrl } = await import('../netlify/lib/cloudinary.mjs');
 const { hashPassword, verifyPassword, createSessionToken, verifySessionToken } = await import('../netlify/lib/session.mjs');
@@ -35,7 +37,9 @@ const coverSignature = (await import('../netlify/functions/cover-signature.mjs')
 const setCover = (await import('../netlify/functions/set-cover.mjs')).default;
 
 // ---------- Fake Airtable ----------
-const db = { tblEvents: [], tblUploads: [], tblCustomers: [], tblOrders: [] };
+const db = { tblEvents: [], tblUploads: [], tblCustomers: [], tblOrders: [], tblPartners: [] };
+const sentEmails = [];
+const cloudinaryDeletes = [];
 const stripe = { sessions: {}, created: 0 };
 let airtableDown = false;
 let created = 0;
@@ -51,6 +55,14 @@ function evalFormula(formula, fields) {
 globalThis.fetch = async (url, opts = {}) => {
   const u = new URL(url);
   if (u.hostname === 'api.stripe.com') return fakeStripe(u, opts);
+  if (u.hostname === 'api.resend.com') {
+    sentEmails.push(JSON.parse(opts.body));
+    return Response.json({ id: `email_${sentEmails.length}` });
+  }
+  if (u.hostname === 'api.cloudinary.com' && opts.method === 'DELETE') {
+    cloudinaryDeletes.push({ path: u.pathname, prefix: u.searchParams.get('prefix') });
+    return Response.json({ deleted: { a: 'deleted' }, partial: false });
+  }
   if (u.hostname !== 'api.airtable.com') throw new Error(`unexpected fetch ${url}`);
   if (airtableDown) return new Response('down', { status: 503 });
   const [, , , tableRaw, recId] = u.pathname.split('/');
@@ -88,7 +100,7 @@ function fakeStripe(u, opts) {
       payment_status: 'unpaid',
       amount_total: Number(form.get('line_items[0][price_data][unit_amount]')),
       customer: 'cus_test_1',
-      metadata: { event_id: form.get('metadata[event_id]'), event_slug: form.get('metadata[event_slug]'), plan: form.get('metadata[plan]') },
+      metadata: Object.fromEntries(['event_id', 'event_slug', 'plan', 'kind'].filter((k) => form.get(`metadata[${k}]`)).map((k) => [k, form.get(`metadata[${k}]`)])),
       form,
     };
     return Promise.resolve(Response.json(stripe.sessions[id]));
@@ -147,8 +159,10 @@ const req = (url, init = {}) => new Request(`https://site.test/.netlify/function
 const post = (url, body, headers = {}) =>
   req(url, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(body) });
 
+const { resetMemoryStore } = await import('../netlify/lib/blobs.mjs');
 beforeEach(() => {
   airtableDown = false;
+  resetMemoryStore();
 });
 
 // ---------- Unit tests ----------
@@ -409,7 +423,7 @@ const crypto = await import('node:crypto');
 
 const signup = (over = {}) => ({
   plan: 'wedding', eventType: 'Wedding', eventName: 'Ava & Noah', eventDate: '2027-06-12',
-  headline: '', colors: ['Sage', 'White', 'Gold'], icon: 'Rings', email: 'Ava@Example.com', password: 'our secret pw', ...over,
+  headline: '', colors: ['Sage', 'White', 'Gold'], icon: 'Rings', email: 'Ava@Example.com', password: 'our secret pw', agreeTerms: true, ...over,
 });
 
 test('slugs and plan dates', () => {
@@ -431,6 +445,7 @@ test('create-checkout validates input and never trusts a client price', async ()
   assert.equal((await bad({ colors: ['Sage'] })).error, 'invalid_form');
   assert.equal((await bad({ colors: ['Sage', 'Gold', 'Navy', 'Blush'] })).error, 'invalid_form');
   assert.equal((await bad({ colors: ['Sage', 'Neon'] })).error, 'invalid_form');
+  assert.equal((await bad({ agreeTerms: false })).error, 'invalid_form');
 
   const before = stripe.created;
   const res = await (await createCheckout(post('create-checkout', signup({ priceCents: 1, amount: 1 })))).json();
@@ -501,4 +516,230 @@ test('payment switches the event on exactly once (welcome page and webhook)', as
   // The new event's own password now opens its dashboard.
   const ok = await login(post('dashboard-login', { slug: 'mia-and-leo', password: 'our secret pw' }));
   assert.equal(ok.status, 200);
+});
+
+// ---------- Limits, password reset, editing, extensions, referrals, retention, admin ----------
+const forgotPassword = (await import('../netlify/functions/forgot-password.mjs')).default;
+const resetPassword = (await import('../netlify/functions/reset-password.mjs')).default;
+const updateEvent = (await import('../netlify/functions/update-event.mjs')).default;
+const createExtension = (await import('../netlify/functions/create-extension-checkout.mjs')).default;
+const adminLogin = (await import('../netlify/functions/admin-login.mjs')).default;
+const adminData = (await import('../netlify/functions/admin-data.mjs')).default;
+const adminAction = (await import('../netlify/functions/admin-action.mjs')).default;
+const { retentionAction, runRetention } = await import('../netlify/lib/retention.mjs');
+const { passwordVersion } = await import('../netlify/lib/session.mjs');
+const { normalize } = await import('../netlify/lib/events.mjs');
+
+const evRow = (slug) => db.tblEvents.find((e) => e.fields['Event Slug'] === slug);
+const cookieFrom = (res, name = 'wp_session') => `${name}=${res.headers.get('set-cookie').match(new RegExp(`${name}=([^;]+)`))[1]}`;
+const hostCookie = (slug, hash = TEST_HASH) => `wp_session=${createSessionToken({ sub: 'host', eventSlug: slug, pv: passwordVersion(hash) })}`;
+function webhookReq(session) {
+  const body = JSON.stringify({ id: `evt_${session.id}`, type: 'checkout.session.completed', data: { object: session } });
+  const t = Math.floor(Date.now() / 1000);
+  const sig = crypto.createHmac('sha256', 'whsec_test').update(`${t}.${body}`).digest('hex');
+  return new Request('https://x/.netlify/functions/stripe-webhook', { method: 'POST', headers: { 'stripe-signature': `t=${t},v1=${sig}` }, body });
+}
+
+test('login: 10 attempts per 15 minutes, then locked even with the right password', async () => {
+  seedEvent('limit-event');
+  for (let i = 0; i < 10; i++) {
+    assert.equal((await login(post('dashboard-login', { slug: 'limit-event', password: `wrong ${i}` }))).status, 401);
+  }
+  const locked = await login(post('dashboard-login', { slug: 'limit-event', password: 'correct horse battery' }));
+  assert.equal(locked.status, 429);
+  assert.equal((await locked.json()).error, 'too_many_attempts');
+  // Another device (IP) is not affected.
+  const other = await login(post('dashboard-login', { slug: 'limit-event', password: 'correct horse battery' }, { 'x-nf-client-connection-ip': '203.0.113.9' }));
+  assert.equal(other.status, 200);
+});
+
+test('storage cap: a full album refuses new uploads; others get the space left', async () => {
+  seedEvent('full-party', { Plan: 'Party Drop', 'Storage Bytes': 5 * 1024 ** 3 });
+  seedEvent('roomy-party', { Plan: 'Party Drop', 'Storage Bytes': 1024 ** 3 });
+  const full = await uploadSignature(post('upload-signature', { slug: 'full-party', sessionId: 'session-1234' }));
+  assert.equal(full.status, 403);
+  assert.equal((await full.json()).error, 'album_full');
+  const ok = await (await uploadSignature(post('upload-signature', { slug: 'roomy-party', sessionId: 'session-1234' }))).json();
+  assert.equal(ok.upload.remainingBytes, 4 * 1024 ** 3);
+});
+
+test('forgot password emails a one-time link; reset signs out old sessions', async () => {
+  process.env.RESEND_API_KEY = 're_test';
+  seedEvent('reset-event', { 'Owner Email': 'host@example.com' });
+  const oldCookie = hostCookie('reset-event');
+  assert.equal((await dashboardEvent(req('dashboard-event', { headers: { cookie: oldCookie } }))).status, 200);
+
+  sentEmails.length = 0;
+  const wrong = await (await forgotPassword(post('forgot-password', { slug: 'reset-event', email: 'someone@else.com' }))).json();
+  assert.equal(wrong.ok, true);
+  assert.equal(sentEmails.length, 0);
+  const right = await (await forgotPassword(post('forgot-password', { slug: 'reset-event', email: 'HOST@example.com' }))).json();
+  assert.equal(right.message, wrong.message, 'same reply either way');
+  assert.equal(sentEmails.length, 1);
+  assert.deepEqual(sentEmails[0].to, ['host@example.com']);
+  const token = sentEmails[0].text.match(/\?reset=([A-Za-z0-9_-]+)/)[1];
+  assert.ok(!JSON.stringify(evRow('reset-event').fields).includes(token), 'token itself is never stored');
+
+  assert.equal((await resetPassword(post('reset-password', { slug: 'reset-event', token: 'x'.repeat(43), password: 'brand new pass' }))).status, 400);
+  assert.equal((await resetPassword(post('reset-password', { slug: 'reset-event', token, password: 'short' }))).status, 400);
+  const done = await resetPassword(post('reset-password', { slug: 'reset-event', token, password: 'brand new pass' }));
+  assert.equal(done.status, 200);
+  const newCookie = cookieFrom(done);
+  assert.equal((await dashboardEvent(req('dashboard-event', { headers: { cookie: newCookie } }))).status, 200);
+  assert.equal((await dashboardEvent(req('dashboard-event', { headers: { cookie: oldCookie } }))).status, 401, 'old device signed out');
+  assert.equal((await resetPassword(post('reset-password', { slug: 'reset-event', token, password: 'another pass 1' }))).status, 400, 'link works once');
+  assert.equal((await login(post('dashboard-login', { slug: 'reset-event', password: 'brand new pass' }))).status, 200);
+  delete process.env.RESEND_API_KEY;
+});
+
+test('edit event: headline, welcome message and 2-3 colors', async () => {
+  seedEvent('edit-event');
+  const cookie = hostCookie('edit-event');
+  const bad = await updateEvent(post('update-event', { headline: 'Hi there', colors: ['Sage'] }, { cookie }));
+  assert.equal(bad.status, 400);
+  const res = await updateEvent(post('update-event', { headline: '  New headline ', welcomeMessage: 'Line one\n\n\n\nLine two', colors: ['Navy', 'Gold', 'Navy'] }, { cookie }));
+  assert.equal(res.status, 200);
+  const f = evRow('edit-event').fields;
+  assert.equal(f.Headline, 'New headline');
+  assert.equal(f['Welcome Message'], 'Line one\n\nLine two');
+  assert.deepEqual(f.Colors, ['Navy', 'Gold']);
+  assert.equal((await updateEvent(post('update-event', { headline: 'x y', colors: ['Navy', 'Gold'] }))).status, 401);
+});
+
+test('extend hosting: $19 checkout adds 12 months exactly once', async () => {
+  seedEvent('extend-event', { 'Hosting End Date': '2099-03-31', 'Deletion Notice 30 Sent': '2099-03-31' });
+  const cookie = hostCookie('extend-event');
+  const res = await (await createExtension(post('create-extension-checkout', {}, { cookie }))).json();
+  assert.equal(res.ok, true);
+  const session = Object.values(stripe.sessions).at(-1);
+  assert.equal(session.form.get('line_items[0][price_data][unit_amount]'), '1900');
+  assert.equal(session.metadata.kind, 'extension');
+  assert.equal(session.form.get('success_url'), 'https://guestphotodrop.test/dashboard/extend-event?extended={CHECKOUT_SESSION_ID}');
+
+  // Unpaid: nothing changes.
+  await checkoutStatus(req(`checkout-status?session_id=${session.id}`));
+  assert.equal(evRow('extend-event').fields['Hosting End Date'], '2099-03-31');
+
+  session.payment_status = 'paid';
+  const st = await (await checkoutStatus(req(`checkout-status?session_id=${session.id}`))).json();
+  assert.equal(st.kind, 'extension');
+  assert.equal((await stripeWebhook(webhookReq(session))).status, 200);
+  await checkoutStatus(req(`checkout-status?session_id=${session.id}`));
+  const f = evRow('extend-event').fields;
+  assert.equal(f['Hosting End Date'], '2100-03-31');
+  assert.equal(f['Deletion Notice 30 Sent'], null, 'warnings reset for the new date');
+  const orders = db.tblOrders.filter((o) => o.fields['Stripe Payment ID'] === session.id);
+  assert.equal(orders.length, 1);
+  assert.equal(orders[0].fields.Product, 'Extend Hosting');
+  assert.equal(orders[0].fields.Amount, 19);
+
+  seedEvent('gone-event', { 'Files Deleted On': '2026-01-01' });
+  assert.equal((await createExtension(post('create-extension-checkout', {}, { cookie: hostCookie('gone-event') }))).status, 409);
+});
+
+test('referrals: active partner code is attached to the event and its order', async () => {
+  db.tblPartners.push({ id: 'recPartner1', fields: { 'Partner Name': 'Bloom Planning', 'Ref Code': 'bloom-planning', Active: true } });
+  db.tblPartners.push({ id: 'recPartner2', fields: { 'Partner Name': 'Old Venue', 'Ref Code': 'old-venue', Active: false } });
+  await createCheckout(post('create-checkout', signup({ eventName: 'Zoe & Ike', ref: 'Bloom-Planning' })));
+  const session = Object.values(stripe.sessions).at(-1);
+  assert.equal(evRow('zoe-and-ike').fields['Referral Code'], 'bloom-planning');
+  session.payment_status = 'paid';
+  await checkoutStatus(req(`checkout-status?session_id=${session.id}`));
+  const order = db.tblOrders.find((o) => o.fields['Stripe Payment ID'] === session.id);
+  assert.deepEqual(order.fields.Partner, ['recPartner1']);
+  assert.equal(order.fields['Referral Code'], 'bloom-planning');
+
+  await createCheckout(post('create-checkout', signup({ eventName: 'Kai & Bo', ref: 'old-venue' })));
+  assert.equal(evRow('kai-and-bo').fields['Referral Code'], undefined, 'inactive partner ignored');
+  await createCheckout(post('create-checkout', signup({ eventName: 'Lu & Max', ref: '<script>' })));
+  assert.equal(evRow('lu-and-max').fields['Referral Code'], undefined);
+});
+
+test('retention rules: 30-day and 7-day warnings, deletion only after the 7-day warning', () => {
+  const base = { rawStatus: 'Active', hostingEndDate: '2027-01-31', ownerEmail: 'h@example.com', notice30Sent: null, notice7Sent: null, filesDeletedOn: null };
+  // Files are deleted 2027-03-02 (30 days after hosting ends).
+  assert.equal(retentionAction(base, '2027-01-30', true), null);
+  assert.deepEqual(retentionAction(base, '2027-01-31', true), { type: 'notice', days: 30, deleteOn: '2027-03-02' });
+  assert.equal(retentionAction({ ...base, notice30Sent: '2027-01-31' }, '2027-02-20', true), null);
+  assert.equal(retentionAction({ ...base, notice30Sent: '2027-01-31' }, '2027-02-23', true).days, 7);
+  assert.equal(retentionAction({ ...base, notice30Sent: '2027-01-31' }, '2027-02-23', false).type, 'blocked');
+  // Late 7-day warning pushes deletion back so the host always gets 7 days.
+  const warnedLate = { ...base, notice30Sent: '2027-01-31', notice7Sent: '2027-03-01' };
+  assert.equal(retentionAction(warnedLate, '2027-03-02', true), null);
+  assert.equal(retentionAction(warnedLate, '2027-03-08', true).type, 'delete');
+  assert.equal(retentionAction({ ...warnedLate, filesDeletedOn: '2027-03-08' }, '2027-04-01', true), null);
+  assert.equal(retentionAction({ ...base, rawStatus: 'Draft' }, '2030-01-01', true), null);
+});
+
+test('daily job: emails, then deletes only that event folder', async () => {
+  process.env.RESEND_API_KEY = 're_test';
+  db.tblEvents.length = 0;
+  seedEvent('old-party', { 'Event ID': 'evt_abc123def456', 'Hosting End Date': '2027-01-31', 'Owner Email': 'old@example.com', 'Cover Image URL': 'https://res.cloudinary.com/x.jpg' });
+  sentEmails.length = 0;
+  cloudinaryDeletes.length = 0;
+  const at = (d) => new Date(`${d}T18:00:00Z`);
+
+  let sum = await runRetention({ now: at('2027-02-01') });
+  assert.equal(sum.notices, 1);
+  assert.match(sentEmails[0].subject, /deleted in 29 days/);
+  assert.equal(evRow('old-party').fields['Deletion Notice 30 Sent'], '2027-02-01');
+  sum = await runRetention({ now: at('2027-02-02') });
+  assert.equal(sum.notices, 0, 'no repeat emails');
+  await runRetention({ now: at('2027-02-24') });
+  assert.equal(evRow('old-party').fields['Deletion Notice 7 Sent'], '2027-02-24');
+  assert.equal(cloudinaryDeletes.length, 0);
+
+  sum = await runRetention({ now: at('2027-03-03') });
+  assert.equal(sum.deleted, 1);
+  assert.deepEqual([...new Set(cloudinaryDeletes.map((d) => d.prefix))], ['events/evt_abc123def456/']);
+  const f = evRow('old-party').fields;
+  assert.equal(f['Files Deleted On'], '2027-03-03');
+  assert.equal(f.Status, 'Expired');
+  assert.equal(f['Cover Image URL'], null);
+  assert.equal(sentEmails.length, 2);
+
+  // Without email set up, warnings can't go out, so nothing gets deleted.
+  delete process.env.RESEND_API_KEY;
+  seedEvent('no-mail', { 'Event ID': 'evt_zzz999yyy888', 'Hosting End Date': '2027-01-31', 'Owner Email': 'x@example.com' });
+  sum = await runRetention({ now: at('2027-06-01') });
+  assert.equal(sum.blocked, 1);
+  assert.equal(evRow('no-mail').fields['Files Deleted On'], undefined);
+});
+
+test('admin: own password, separate cookie, events with revenue and storage, actions', async () => {
+  db.tblEvents.length = 0;
+  db.tblOrders.length = 0;
+  seedEvent('admin-a', { 'Owner Email': 'a@example.com', 'Storage Bytes': 1024 ** 3 });
+  seedEvent('admin-draft', { Status: 'Draft' });
+  db.tblOrders.push({ id: 'recO1', fields: { Event: ['recEvtadmin-a'], Amount: 79, Status: 'Paid' } });
+  db.tblOrders.push({ id: 'recO2', fields: { Event: ['recEvtadmin-a'], Amount: 19, Status: 'Paid' } });
+  db.tblOrders.push({ id: 'recO3', fields: { Event: ['recEvtadmin-a'], Amount: 79, Status: 'Refunded' } });
+
+  assert.equal((await adminData(req('admin-data'))).status, 401);
+  assert.equal((await adminData(req('admin-data', { headers: { cookie: hostCookie('admin-a') } }))).status, 401, 'host session is not admin');
+  assert.equal((await adminLogin(post('admin-login', { password: 'nope' }))).status, 401);
+  const ok = await adminLogin(post('admin-login', { password: 'owner admin pass' }));
+  assert.equal(ok.status, 200);
+  const cookie = cookieFrom(ok, 'gpd_admin');
+  // The admin cookie does not open a host dashboard.
+  assert.equal((await dashboardEvent(req('dashboard-event', { headers: { cookie: cookie.replace('gpd_admin', 'wp_session') } }))).status, 401);
+
+  const data = await (await adminData(req('admin-data', { headers: { cookie } }))).json();
+  assert.equal(data.totals.events, 1);
+  assert.equal(data.totals.revenue, 98);
+  assert.equal(data.totals.unpaidDrafts, 1);
+  const a = data.events.find((e) => e.slug === 'admin-a');
+  assert.equal(a.revenue, 98);
+  assert.equal(a.storage.usedBytes, 1024 ** 3);
+  assert.equal(a.storage.capBytes, 25 * 1024 ** 3);
+  assert.ok(!JSON.stringify(data).includes('scrypt:'), 'no password hashes');
+
+  const act = async (action) => (await adminAction(post('admin-action', { slug: 'admin-a', action }, { cookie }))).json();
+  assert.equal((await act('extend')).hostingEndDate, '2100-01-15');
+  const reset = await act('reset_password');
+  assert.equal(reset.emailed, false);
+  assert.match(reset.link, /^https:\/\/guestphotodrop\.test\/dashboard\/admin-a\?reset=/);
+  assert.equal((await act('close')).ok, true);
+  assert.equal(evRow('admin-a').fields.Status, 'Closed');
+  assert.equal((await adminAction(post('admin-action', { slug: 'admin-a', action: 'close' }))).status, 401);
 });

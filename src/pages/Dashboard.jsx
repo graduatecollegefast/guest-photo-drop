@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { useEventTheme } from '../utils/theme.js';
 import { useDashboardAuth } from '../hooks/useDashboardAuth.js';
-import DashboardLogin from './DashboardLogin.jsx';
+import DashboardLogin, { ResetPasswordForm } from './DashboardLogin.jsx';
+import { SUPPORT_EMAIL } from '../utils/support.js';
+import { formatBytes } from '../utils/format.js';
 import DashboardStats from '../components/DashboardStats.jsx';
 import Gallery from '../components/Gallery.jsx';
 import DownloadPanel from '../components/DownloadPanel.jsx';
@@ -31,10 +33,57 @@ export default function Dashboard() {
   useEventTheme(auth.event?.colors || publicEvent?.colors);
   const [view, setView] = useState('gallery');
   const [expired, setExpired] = useState(false);
+  const [params, setParams] = useSearchParams();
+  const resetToken = params.get('reset');
+  const extendedSession = params.get('extended');
+  const [flash, setFlash] = useState('');
+
+  // Back from Stripe after "Extend hosting": confirm the payment, then show the new date.
+  useEffect(() => {
+    if (!extendedSession || auth.status !== 'authed') return;
+    let live = true;
+    (async () => {
+      for (let i = 0; i < 6 && live; i++) {
+        try {
+          const res = await api.checkoutStatus(extendedSession);
+          if (res.paid) {
+            await auth.refresh();
+            if (live) setFlash(`Thank you! Your gallery is now hosted until ${formatDate(res.hostingEndDate)}.`);
+            break;
+          }
+        } catch {
+          /* try again */
+        }
+        await new Promise((r) => setTimeout(r, 2500));
+      }
+      if (live) setParams({}, { replace: true });
+    })();
+    return () => {
+      live = false;
+    };
+  }, [extendedSession, auth.status]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     document.title = auth.event ? `${auth.event.name} · Album` : 'Event album';
   }, [auth.event]);
+
+  if (resetToken) {
+    return (
+      <IconContext.Provider value={publicEvent?.icon || 'Hearts'}>
+        <ResetPasswordForm
+          slug={slug}
+          token={resetToken}
+          event={publicEvent}
+          onDone={async () => {
+            setParams({}, { replace: true });
+            setExpired(false);
+            setFlash('Your new password is saved.');
+            await auth.refresh();
+          }}
+        />
+      </IconContext.Provider>
+    );
+  }
 
   if (auth.status === 'checking') return <div className="page-loading" role="status">Loading…</div>;
 
@@ -43,6 +92,7 @@ export default function Dashboard() {
       <IconContext.Provider value={publicEvent?.icon || 'Hearts'}>
       <DashboardLogin
         event={publicEvent}
+        slug={slug}
         expired={expired}
         onLogin={async (pw) => {
           await auth.login(pw);
@@ -87,9 +137,26 @@ export default function Dashboard() {
         </button>
       </header>
 
-      {event.status === 'expired' && (
+      {flash && (
+        <p className="notice notice-good" role="status">
+          {flash}
+        </p>
+      )}
+      {event.filesDeletedOn ? (
         <p className="notice" role="status">
-          This gallery has expired. Uploads are closed. Download anything you want to keep.
+          Hosting for this event ended and its photos and videos were permanently deleted on {formatDate(event.filesDeletedOn)}.
+        </p>
+      ) : (
+        event.status === 'expired' && (
+          <p className="notice" role="status">
+            Hosting has ended and uploads are closed. Everything will be permanently deleted on {formatDate(event.deleteOnDate)}.
+            Download what you want to keep, or extend hosting in Event settings.
+          </p>
+        )
+      )}
+      {!event.filesDeletedOn && event.storage?.full && (
+        <p className="notice" role="status">
+          Your album is full ({formatBytes(event.storage.capBytes)}), so guests can’t add more right now. Email {SUPPORT_EMAIL} if you need help.
         </p>
       )}
 
@@ -110,6 +177,14 @@ export default function Dashboard() {
       {view === 'gallery' && <Gallery onChanged={auth.refresh} onUnauthorized={onUnauthorized} />}
       {view === 'download' && <DownloadPanel onUnauthorized={onUnauthorized} />}
       {view === 'settings' && <SettingsPanel event={event} onChanged={auth.refresh} onUnauthorized={onUnauthorized} />}
+
+      <footer className="dash-footer">
+        <a href="/help#hosts">Help for hosts</a>
+        <span aria-hidden="true"> · </span>
+        <span>
+          Support: <a href={`mailto:${event.supportEmail || SUPPORT_EMAIL}`}>{event.supportEmail || SUPPORT_EMAIL}</a>
+        </span>
+      </footer>
     </main>
     </IconContext.Provider>
   );

@@ -15,6 +15,9 @@ let authed = false;
 let hidden = new Set();
 let cover = '';
 let lastSignup = null;
+let adminAuthed = false;
+let edits = {};
+export const mockLog = { forgot: [], reset: [], extend: 0, admin: [] };
 
 const EVENTS = {
   'jordan-and-taylor': 'active',
@@ -42,7 +45,7 @@ function eventFor(slug) {
   if (status === 'draft') return { slug, status };
   return {
     slug, status, name: 'Jordan & Taylor', eventType: 'Wedding', plan: 'Wedding Drop', colors: (process.env.MOCK_COLORS || 'Champagne,Mocha,White').split(','), icon: process.env.MOCK_ICON || 'Hearts', eventDate: '2027-06-12', uploadsCloseDate: '2028-06-12', hostingEndDate: '2028-06-12',
-    headline: 'Help us remember the day through your eyes.', welcomeMessage: '', coverImageUrl: cover,
+    headline: 'Help us remember the day through your eyes.', welcomeMessage: '', coverImageUrl: cover, ...edits,
     allowPhotos: true, allowVideos: true, maxFilesPerUpload: 50, limits: { maxImageMB: 10, maxVideoMB: 100 },
   };
 }
@@ -95,6 +98,7 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, { ok: true, url: '/welcome?session_id=cs_test_mock000000001' });
     }
     if (fn === 'checkout-status') {
+      if (url.searchParams.get('session_id') === 'cs_test_ext0000000001') return send(res, 200, { ok: true, paid: true, kind: 'extension', slug: 'jordan-and-taylor', hostingEndDate: '2029-06-12' });
       return send(res, 200, { ok: true, paid: true, slug: 'jordan-and-taylor', eventName: lastSignup ? lastSignup.eventName : 'Jordan & Taylor' });
     }
     if (fn === 'dashboard-login') {
@@ -103,6 +107,44 @@ const server = http.createServer(async (req, res) => {
       authed = true;
       return send(res, 200, { ok: true });
     }
+    if (fn === 'forgot-password') {
+      mockLog.forgot.push(JSON.parse((await readBody(req)).toString()));
+      return send(res, 200, { ok: true, message: 'If that email matches this event, a reset link is on its way. It expires in 1 hour.' });
+    }
+    if (fn === 'reset-password') {
+      const body = JSON.parse((await readBody(req)).toString());
+      mockLog.reset.push(body);
+      if (body.token !== 'good-token-1234567890abcdef') return send(res, 400, { ok: false, error: 'bad_reset_link', message: 'This reset link has expired or was already used. Please ask for a new one.' });
+      authed = true;
+      return send(res, 200, { ok: true });
+    }
+    if (fn === 'admin-login') {
+      const body = JSON.parse((await readBody(req)).toString());
+      if (body.password !== 'owner admin pass') return send(res, 401, { ok: false, error: 'wrong_password', message: 'That password is not right.' });
+      adminAuthed = true;
+      return send(res, 200, { ok: true });
+    }
+    if (fn === 'admin-logout') {
+      adminAuthed = false;
+      return send(res, 200, { ok: true });
+    }
+    if (fn.startsWith('admin-')) {
+      if (!adminAuthed) return send(res, 401, { ok: false, error: 'admin_required', message: 'Please sign in to the admin page.' });
+      if (fn === 'admin-action') {
+        const body = JSON.parse((await readBody(req)).toString());
+        mockLog.admin.push(body);
+        if (body.action === 'reset_password') return send(res, 200, { ok: true, emailed: false, link: 'http://localhost:4599/dashboard/jordan-and-taylor?reset=abc', message: 'Email is not set up, so copy this link and send it to the host. It works for 24 hours.' });
+        return send(res, 200, { ok: true, message: body.action === 'extend' ? 'Hosting now ends 2029-06-12.' : 'Uploads are closed for this event.' });
+      }
+      const GB = 1024 ** 3;
+      const ev = (name, slug, plan, status, used, cap, revenue, extra = {}) => ({ name, slug, eventType: 'Wedding', plan, status, eventDate: '2027-06-12', hostingEndDate: '2028-06-12', deleteOnDate: '2028-07-12', filesDeletedOn: null, ownerEmail: `${slug}@example.com`, referralCode: '', uploads: 412, storage: { usedBytes: used, capBytes: cap, full: used >= cap }, revenue, ...extra });
+      return send(res, 200, { ok: true, totals: { events: 3, active: 2, revenue: 247, storageBytes: 9.4 * GB, unpaidDrafts: 1 }, events: [
+        ev('Jordan & Taylor', 'jordan-and-taylor', 'Wedding Drop', 'active', 6.2 * GB, 25 * GB, 98, { referralCode: 'bloom-planning' }),
+        ev('Maya’s 30th Birthday', 'mayas-30th', 'Party Drop', 'active', 3.2 * GB, 5 * GB, 29, { eventType: 'Birthday' }),
+        ev('Ava & Noah', 'ava-and-noah', 'Forever Keepsake', 'closed', 0, 50 * GB, 149),
+        ev('Kai & Bo', 'kai-and-bo', 'Wedding Drop', 'draft', 0, 25 * GB, 0),
+      ] });
+    }
     if (fn === 'dashboard-logout') {
       authed = false;
       return send(res, 200, { ok: true });
@@ -110,7 +152,16 @@ const server = http.createServer(async (req, res) => {
     if (!authed) return send(res, 401, { ok: false, error: 'session_expired', message: 'Please sign in again.' });
     if (fn === 'dashboard-event') {
       const vis = items.filter((i) => !hidden.has(i.id));
-      return send(res, 200, { ok: true, event: { ...eventFor('jordan-and-taylor'), counts: { media: vis.length, photos: vis.filter((i) => i.type === 'image').length, videos: vis.filter((i) => i.type === 'video').length, hidden: hidden.size, contributors: 3 } } });
+      return send(res, 200, { ok: true, event: { ...eventFor('jordan-and-taylor'), deleteOnDate: '2028-07-12', filesDeletedOn: null, storage: { usedBytes: 6.2 * 1024 ** 3, capBytes: 25 * 1024 ** 3, full: false }, extension: { price: 19, months: 12, available: true }, supportEmail: 'theeverydayearners@gmail.com', counts: { media: vis.length, photos: vis.filter((i) => i.type === 'image').length, videos: vis.filter((i) => i.type === 'video').length, hidden: hidden.size, contributors: 3 } } });
+    }
+    if (fn === 'update-event') {
+      const body = JSON.parse((await readBody(req)).toString());
+      edits = { headline: body.headline, welcomeMessage: body.welcomeMessage, colors: body.colors };
+      return send(res, 200, { ok: true, ...edits });
+    }
+    if (fn === 'create-extension-checkout') {
+      mockLog.extend += 1;
+      return send(res, 200, { ok: true, url: '/dashboard/jordan-and-taylor?extended=cs_test_ext0000000001' });
     }
     if (fn === 'dashboard-media') {
       const wantHidden = url.searchParams.get('status') === 'Hidden';
@@ -151,7 +202,7 @@ const server = http.createServer(async (req, res) => {
     return send(res, 200, { asset_id: id, public_id: `f/${name}`, version: 1, signature: 's', resource_type: /mov|mp4/i.test(name) ? 'video' : 'image', format: 'jpg', bytes: 100 });
   }
 
-  if (url.pathname === '/__stats') return send(res, 200, stats);
+  if (url.pathname === '/__stats') return send(res, 200, { ...stats, mockLog, lastSignup });
 
   const m = url.pathname.match(/^\/mock-img\/(\d+)\.svg$/);
   if (m) return send(res, 200, svg(Number(m[1])), { 'Content-Type': 'image/svg+xml' });

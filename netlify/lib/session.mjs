@@ -55,7 +55,42 @@ export function clearedCookie() {
 
 export function requireSession(req) {
   const session = verifySessionToken(readCookie(req));
-  if (!session) throw new HttpError(401, 'session_expired', 'Please sign in again.');
+  if (!session || session.sub === 'admin') throw new HttpError(401, 'session_expired', 'Please sign in again.');
+  return session;
+}
+
+// A short fingerprint of the current password hash. Host sessions carry it, so changing or
+// resetting the password signs out every other device.
+export function passwordVersion(passwordHash) {
+  return crypto.createHash('sha256').update(String(passwordHash || '')).digest('base64url').slice(0, 12);
+}
+
+export function assertCurrentPassword(session, event) {
+  if (session.pv && session.pv !== passwordVersion(event.passwordHash)) {
+    throw new HttpError(401, 'session_expired', 'Your password was changed. Please sign in again.');
+  }
+}
+
+export function hostSessionCookie(event) {
+  const c = config().dashboard;
+  const ttl = c.sessionDays * 86400;
+  const token = createSessionToken({ sub: 'host', eventSlug: event.slug, pv: passwordVersion(event.passwordHash) }, c.sessionSecret, ttl);
+  return sessionCookie(token, ttl);
+}
+
+// Admin sessions use their own cookie so they never mix with a host's dashboard session.
+export const ADMIN_COOKIE = 'gpd_admin';
+export function adminSessionCookie() {
+  const ttl = 12 * 3600;
+  const token = createSessionToken({ sub: 'admin' }, config().dashboard.sessionSecret, ttl);
+  return `${ADMIN_COOKIE}=${token}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=${ttl}`;
+}
+export function clearedAdminCookie() {
+  return `${ADMIN_COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0`;
+}
+export function requireAdmin(req) {
+  const session = verifySessionToken(readCookie(req, ADMIN_COOKIE));
+  if (!session || session.sub !== 'admin') throw new HttpError(401, 'admin_required', 'Please sign in to the admin page.');
   return session;
 }
 

@@ -151,6 +151,11 @@ function ActiveEvent({ event, slug }) {
             {event.allowVideos && `Videos up to ${event.limits.maxVideoMB} MB`}
             {` · Up to ${event.maxFilesPerUpload} at a time`}
           </p>
+          <p className="fine-print guest-links">
+            <a href="/help#guests" target="_blank" rel="noopener">How to upload</a>
+            {' · '}By uploading you agree to our <a href="/terms" target="_blank" rel="noopener">Terms</a> and{' '}
+            <a href="/privacy" target="_blank" rel="noopener">Privacy Policy</a>.
+          </p>
         </section>
       )}
 

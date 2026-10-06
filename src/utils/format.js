@@ -12,8 +12,11 @@ export function formatDateTime(iso) {
 
 export function formatBytes(bytes) {
   if (!bytes && bytes !== 0) return '';
+  if (bytes === 0) return '0 MB';
   if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes < 1024 ** 3) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  const gb = bytes / 1024 ** 3;
+  return `${Number.isInteger(gb) ? gb : gb.toFixed(1)} GB`;
 }
 
 export function plural(n, one, many = `${one}s`) {

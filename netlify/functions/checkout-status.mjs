@@ -14,5 +14,5 @@ export default handler('checkout-status', async (req) => {
   const session = await getCheckoutSession(id);
   if (session.payment_status !== 'paid') return json({ ok: true, paid: false });
   const result = await fulfillCheckout(session);
-  return json({ ok: true, paid: true, slug: result.slug, eventName: result.eventName });
+  return json({ ok: true, paid: true, kind: result.kind || 'event', slug: result.slug, eventName: result.eventName, hostingEndDate: result.hostingEndDate });
 });

@@ -5,7 +5,7 @@
 // Isolated on purpose: swapping in a different bulk-download mechanism only touches this file.
 
 import { handler, json, requireMethod, ensureConfigured } from '../lib/http.mjs';
-import { requireSession } from '../lib/session.mjs';
+import { requireSession, assertCurrentPassword } from '../lib/session.mjs';
 import { findEventBySlug } from '../lib/events.mjs';
 import { listAll, formulaString } from '../lib/airtable.mjs';
 import { archiveDownloadUrl } from '../lib/cloudinary.mjs';
@@ -24,6 +24,7 @@ export default handler('prepare-download', async (req) => {
   ensureConfigured(['SESSION_SECRET', 'AIRTABLE_ACCESS_TOKEN', 'AIRTABLE_BASE_ID', 'AIRTABLE_UPLOADS_TABLE_ID', 'CLOUDINARY_CLOUD_NAME', 'CLOUDINARY_API_KEY', 'CLOUDINARY_API_SECRET']);
   const session = requireSession(req);
   const event = await findEventBySlug(session.eventSlug);
+  assertCurrentPassword(session, event);
 
   const records = await listAll(config().airtable.uploadsTable, {
     filterByFormula: `AND({Event Key} = ${formulaString(event.eventId)}, {Status} = 'Active')`,

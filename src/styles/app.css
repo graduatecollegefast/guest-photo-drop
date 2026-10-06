@@ -309,3 +309,20 @@ p { margin: 0 0 0.6em; }
 
 /* Floating background icons only suit the Hearts design. */
 .guest[data-icon]:not([data-icon='Hearts']) .hero::before { display: none; }
+
+/* ---------- Sign-in help, reset, dashboard footer ---------- */
+.login-sub { font-size: 1.05rem; font-weight: 600; margin: 0.4rem 0 0.2rem; }
+.login-help { margin: 1.1rem 0 0; color: var(--text-muted); text-align: center; }
+.login-help a, .dash-footer a, .guest-links a { color: var(--primary); }
+.login-card .btn-link { margin-top: 0.4rem; }
+.notice-good { border-left-color: var(--success, #2e7d4f); }
+.dash-footer { margin: 2.5rem 0 1rem; text-align: center; font-size: 0.9rem; color: var(--text-muted); }
+.pill-closed { background: #efe6d6; color: #7a5a1f; }
+.pill-draft { background: #ececec; color: #555; }
+.settings-list dd.no-cap { text-transform: none; }
+
+/* ---------- Edit page and extend hosting ---------- */
+.sub-title { font-family: var(--font-display); font-weight: 500; font-size: 1.35rem; margin: 0 0 0.4rem; }
+.edit-event, .extend-box { margin: 1.6rem 0; padding-top: 1.4rem; border-top: 1px solid var(--border); }
+.field textarea { width: 100%; padding: 0.7rem 1rem; border: 1.5px solid var(--border); border-radius: var(--radius-small); font: inherit; font-size: 1rem; resize: vertical; background: #fff; }
+.field textarea:focus { border-color: var(--primary); outline: none; }

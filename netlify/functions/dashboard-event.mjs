@@ -3,8 +3,10 @@
 // so this never scans the Uploads table.
 
 import { handler, json, requireMethod, ensureConfigured, HttpError } from '../lib/http.mjs';
-import { requireSession } from '../lib/session.mjs';
-import { findEventBySlug, effectiveStatus } from '../lib/events.mjs';
+import { requireSession, assertCurrentPassword } from '../lib/session.mjs';
+import { findEventBySlug, effectiveStatus, deleteOnDate, storageInfo } from '../lib/events.mjs';
+import { EXTENSION } from '../lib/plans.mjs';
+import { SUPPORT_EMAIL } from '../lib/email.mjs';
 import { config } from '../lib/config.mjs';
 
 export default handler('dashboard-event', async (req) => {
@@ -16,6 +18,7 @@ export default handler('dashboard-event', async (req) => {
     throw new HttpError(401, 'session_expired', 'Please sign in to this event.');
   }
   const event = await findEventBySlug(session.eventSlug, { fresh: true });
+  assertCurrentPassword(session, event);
   const { limits } = config();
 
   return json({
@@ -32,6 +35,12 @@ export default handler('dashboard-event', async (req) => {
       hostingEndDate: event.hostingEndDate,
       status: effectiveStatus(event),
       headline: event.headline,
+      welcomeMessage: event.welcomeMessage,
+      deleteOnDate: deleteOnDate(event),
+      filesDeletedOn: event.filesDeletedOn,
+      storage: storageInfo(event),
+      extension: { price: EXTENSION.priceCents / 100, months: EXTENSION.months, available: !event.filesDeletedOn },
+      supportEmail: SUPPORT_EMAIL(),
       coverImageUrl: event.coverImageUrl,
       allowPhotos: event.allowPhotos,
       allowVideos: event.allowVideos,

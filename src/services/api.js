@@ -62,4 +62,12 @@ export const api = {
   setCover: (result) => call('set-cover', { method: 'POST', body: { result } }),
   removeCover: () => call('set-cover', { method: 'POST', body: { remove: true } }),
   prepareDownload: () => call('prepare-download', { method: 'POST', timeoutMs: 30000 }),
+  forgotPassword: (slug, email) => call('forgot-password', { method: 'POST', body: { slug, email } }),
+  resetPassword: (slug, token, password) => call('reset-password', { method: 'POST', body: { slug, token, password } }),
+  updateEvent: (fields) => call('update-event', { method: 'POST', body: fields }),
+  extendHosting: () => call('create-extension-checkout', { method: 'POST', timeoutMs: 30000 }),
+  adminLogin: (password) => call('admin-login', { method: 'POST', body: { password } }),
+  adminLogout: () => call('admin-logout', { method: 'POST' }),
+  adminData: () => call('admin-data', { timeoutMs: 30000 }),
+  adminAction: (slug, action) => call('admin-action', { method: 'POST', body: { slug, action } }),
 };

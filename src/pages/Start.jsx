@@ -6,6 +6,8 @@ import { api } from '../services/api.js';
 import { PLANS, EVENT_TYPES, NAME_EXAMPLES, HEADLINE_EXAMPLES, DEFAULT_ICON, slugPreview } from '../utils/plans.js';
 import { COLOR_DOTS, STARTER_SETS, DEFAULT_COLORS, themeVars } from '../utils/palette.js';
 import { formatDate } from '../utils/format.js';
+import { getReferral } from '../utils/referral.js';
+import { Link } from 'react-router-dom';
 
 const MIN_DATE = new Date(Date.now() - 364 * 86400000).toISOString().slice(0, 10);
 
@@ -24,6 +26,7 @@ export default function Start() {
   const [iconTouched, setIconTouched] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [agree, setAgree] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -65,9 +68,10 @@ export default function Start() {
     if (!eventDate) return setError('Please choose your event date.');
     if (colors.length < 2) return setError('Please pick 2 or 3 colors.');
     if (password.trim().length < 8) return setError('Your dashboard password needs at least 8 characters.');
+    if (!agree) return setError('Please agree to the Terms of Service and Privacy Policy.');
     setBusy(true);
     try {
-      const res = await api.createCheckout({ plan, eventType, eventName: fullName, eventDate, headline, colors, icon, email, password });
+      const res = await api.createCheckout({ plan, eventType, eventName: fullName, eventDate, headline, colors, icon, email, password, agreeTerms: true, ref: getReferral() || undefined });
       window.location.assign(res.url);
     } catch (err) {
       setError(err.message || 'Something went wrong. Please try again.');
@@ -214,6 +218,16 @@ export default function Start() {
             <p className="link-preview">
               Your guest link: <strong>guestphotodrop.com/e/{preview}</strong>
             </p>
+
+            <label className="agree">
+              <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} required />
+              <span>
+                I agree to the{' '}
+                <Link to="/terms" target="_blank">Terms of Service</Link> and{' '}
+                <Link to="/privacy" target="_blank">Privacy Policy</Link>, and I’ve read the{' '}
+                <Link to="/refunds" target="_blank">Refund Policy</Link>.
+              </span>
+            </label>
 
             {error && (
               <p className="form-error" role="alert">

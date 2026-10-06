@@ -7,7 +7,7 @@
   NODE_VERSION = "20"
   # These are identifiers, not secrets. Real secrets (Airtable token, Cloudinary API secret,
   # password hash, session secret) stay covered by Netlify's secrets scan.
-  SECRETS_SCAN_OMIT_KEYS = "SITE_URL,AIRTABLE_BASE_ID,AIRTABLE_EVENTS_TABLE_ID,AIRTABLE_UPLOADS_TABLE_ID,AIRTABLE_CUSTOMERS_TABLE_ID,AIRTABLE_ORDERS_TABLE_ID,CLOUDINARY_CLOUD_NAME,CLOUDINARY_API_KEY"
+  SECRETS_SCAN_OMIT_KEYS = "SITE_URL,AIRTABLE_BASE_ID,AIRTABLE_EVENTS_TABLE_ID,AIRTABLE_UPLOADS_TABLE_ID,AIRTABLE_CUSTOMERS_TABLE_ID,AIRTABLE_ORDERS_TABLE_ID,AIRTABLE_PARTNERS_TABLE_ID,CLOUDINARY_CLOUD_NAME,EMAIL_FROM,SUPPORT_EMAIL,CLOUDINARY_API_KEY"
 
 [functions]
   node_bundler = "esbuild"
@@ -47,6 +47,11 @@
 
 [[headers]]
   for = "/dashboard/*"
+  [headers.values]
+    X-Robots-Tag = "noindex, nofollow, noarchive"
+
+[[headers]]
+  for = "/admin"
   [headers.values]
     X-Robots-Tag = "noindex, nofollow, noarchive"
 
