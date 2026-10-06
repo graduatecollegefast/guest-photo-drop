@@ -41,7 +41,7 @@ function eventFor(slug) {
   if (!status) return null;
   if (status === 'draft') return { slug, status };
   return {
-    slug, status, name: 'Jordan & Taylor', eventType: 'Wedding', plan: 'Wedding Drop', theme: process.env.MOCK_THEME || 'Silver Red Purple', eventDate: '2027-06-12', uploadsCloseDate: '2028-06-12', hostingEndDate: '2028-06-12',
+    slug, status, name: 'Jordan & Taylor', eventType: 'Wedding', plan: 'Wedding Drop', colors: (process.env.MOCK_COLORS || 'Champagne,Mocha,White').split(','), icon: process.env.MOCK_ICON || 'Hearts', eventDate: '2027-06-12', uploadsCloseDate: '2028-06-12', hostingEndDate: '2028-06-12',
     headline: 'Help us remember the day through your eyes.', welcomeMessage: '', coverImageUrl: cover,
     allowPhotos: true, allowVideos: true, maxFilesPerUpload: 50, limits: { maxImageMB: 10, maxVideoMB: 100 },
   };

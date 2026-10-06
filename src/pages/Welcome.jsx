@@ -32,7 +32,7 @@ export default function Welcome() {
     };
   }, [sessionId]);
 
-  const guestUrl = state.data ? `${window.location.origin}/event/${state.data.slug}` : '';
+  const guestUrl = state.data ? `${window.location.origin}/e/${state.data.slug}` : '';
 
   useEffect(() => {
     if (!guestUrl || !canvasRef.current) return;

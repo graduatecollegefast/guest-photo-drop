@@ -3,6 +3,7 @@
 import { config, IMAGE_FORMATS, VIDEO_FORMATS } from './config.mjs';
 import { listRecords, formulaString } from './airtable.mjs';
 import { HttpError, SLUG_RE } from './http.mjs';
+import { DEFAULT_COLORS, DEFAULT_ICON } from './plans.mjs';
 
 const CACHE_MS = 30_000; // Changes in Airtable take effect within 30 seconds.
 const cache = new Map();
@@ -27,7 +28,8 @@ export function normalize(record) {
     slug: f['Event Slug'] || '',
     eventType: f['Event Type'] || 'Wedding',
     plan: f['Plan'] || '',
-    theme: f['Theme'] || 'Silver Red Purple',
+    colors: Array.isArray(f['Colors']) && f['Colors'].length ? f['Colors'] : DEFAULT_COLORS,
+    icon: f['Icon'] || DEFAULT_ICON[f['Event Type'] || 'Wedding'] || 'Hearts',
     eventDate: f['Event Date'] || null,
     uploadsCloseDate: f['Uploads Close Date'] || null,
     hostingEndDate: f['Hosting End Date'] || null,
@@ -119,7 +121,8 @@ export function toPublicEvent(event) {
     status,
     name: event.name,
     eventType: event.eventType,
-    theme: event.theme,
+    colors: event.colors,
+    icon: event.icon,
     eventDate: event.eventDate,
     uploadsCloseDate: event.uploadsCloseDate,
     hostingEndDate: event.hostingEndDate,

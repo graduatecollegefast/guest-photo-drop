@@ -31,6 +31,11 @@
 
 # Event pages, dashboards and receipts are private: never indexed. The home page is public.
 [[headers]]
+  for = "/e/*"
+  [headers.values]
+    X-Robots-Tag = "noindex, nofollow, noarchive"
+
+[[headers]]
   for = "/event/*"
   [headers.values]
     X-Robots-Tag = "noindex, nofollow, noarchive"

@@ -29,7 +29,11 @@ export const PLANS = {
 };
 
 export const EVENT_TYPES = ['Wedding', 'Birthday', 'Shower', 'Graduation', 'Reunion', 'Other'];
-export const THEMES = ['Silver Red Purple', 'Classic Ivory', 'Blush', 'Midnight'];
+// The 12 color dots customers pick 2 or 3 from (most-used wedding colors).
+export const COLORS = ['White', 'Champagne', 'Mocha', 'Black', 'Gold', 'Silver', 'Sage', 'Emerald', 'Dusty Blue', 'Navy', 'Blush', 'Burgundy'];
+export const ICONS = ['Hearts', 'Bells', 'Ribbons', 'Rings', 'Florals', 'Sparkles'];
+export const DEFAULT_ICON = { Wedding: 'Hearts', Shower: 'Florals', Birthday: 'Sparkles', Graduation: 'Sparkles', Reunion: 'Sparkles', Other: 'Sparkles' };
+export const DEFAULT_COLORS = ['Champagne', 'Mocha', 'White'];
 
 export function addMonths(isoDate, months) {
   const d = new Date(`${isoDate}T00:00:00Z`);

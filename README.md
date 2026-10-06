@@ -19,13 +19,16 @@ from it: its own code, its own Airtable base, its own storage folders and its ow
 ## Airtable base: Guest Photo Drop
 
 Tables: Customers, Events, Uploads, Orders. Each Event belongs to a Customer, carries its Plan,
-Event Type, dates (Event, Uploads Close, Hosting End), Theme and its own dashboard password hash.
+Event Type, dates (Event, Uploads Close, Hosting End), Colors, Icon and its own dashboard password hash.
+(The older Theme field is no longer used.)
 Every guest page is generated from its Event record, so a new event goes live as soon as its record exists.
 
 ## How a customer gets their page
 
 1. Home page (`/`) shows the plans. "Create your event" opens `/start`.
-2. `/start`: plan, event type, names, date, optional headline, color theme, email and dashboard password.
+2. `/start`: plan, event type, names (examples match the event type), date, optional headline, 2 or 3 colors
+   from 12 dots (or a starter set), an icon (Hearts, Bells, Ribbons, Rings, Florals, Sparkles), email and
+   dashboard password, with a live preview of the guest page.
 3. `create-checkout` validates everything, creates the Customer and a **Draft** Event (password stored only
    as a scrypt hash), then opens Stripe Checkout. Prices come from `netlify/lib/plans.mjs`, never the browser.
 4. After payment Stripe returns to `/welcome`. `checkout-status` confirms the payment and switches the event
@@ -33,7 +36,10 @@ Every guest page is generated from its Event record, so a new event goes live as
    Stripe's side. Both are safe to run more than once: one Order per payment.
 5. The welcome page shows the guest link, the QR code and `/dashboard/<link>`.
 
-Guest pages (`/event/<link>`) are built from the Event record and use the event's color theme.
+Guest pages (`/e/<link>`) are built from the Event record. `src/utils/palette.js` turns the picked colors into
+a full theme: darkest color for names and buttons, middle for icons, lightest for dividers and backgrounds,
+with contrast checked so every one of the 286 possible picks stays readable (`tests/palette.test.mjs`).
+Old `/event/<link>` addresses redirect to `/e/<link>`.
 Status follows the plan dates: open until Uploads Close, closed after, expired after Hosting End.
 
 ## Environment variables (Netlify)

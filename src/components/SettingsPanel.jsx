@@ -4,7 +4,7 @@ import CoverPhotoPanel from './CoverPhotoPanel.jsx';
 
 // Read-only event settings plus the guest QR code. Settings are changed in Airtable (see README).
 export default function SettingsPanel({ event, onChanged, onUnauthorized }) {
-  const guestUrl = `${window.location.origin}/event/${event.slug}`;
+  const guestUrl = `${window.location.origin}/e/${event.slug}`;
   const canvasRef = useRef(null);
   const [qrReady, setQrReady] = useState(false);
   const [copied, setCopied] = useState(false);

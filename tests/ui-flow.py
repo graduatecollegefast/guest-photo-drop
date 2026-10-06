@@ -28,13 +28,13 @@ with sync_playwright() as p:
 
     for label, vp in [("iphone", {"width": 390, "height": 844}), ("android", {"width": 412, "height": 915})]:
         page = browser.new_page(viewport=vp, device_scale_factor=2, is_mobile=True, has_touch=True)
-        page.goto(BASE + "/event/jordan-and-taylor")
+        page.goto(BASE + "/e/jordan-and-taylor")
         page.wait_for_selector("text=Add your photos & videos")
         page.screenshot(path=f"{OUT}/{label}-1-landing.png")
         page.close()
 
     page = browser.new_page(viewport={"width": 390, "height": 844}, device_scale_factor=2, is_mobile=True, has_touch=True)
-    page.goto(BASE + "/event/jordan-and-taylor")
+    page.goto(BASE + "/e/jordan-and-taylor")
     page.wait_for_selector("text=Add your photos & videos")
 
     files = [jpg(f"IMG_20{i:02d}.JPG") for i in range(22)] + [jpg("IMG_FAIL_9999.JPG"), mov("IMG_3001.MOV"), jpg("IMG_REGFAIL.JPG"),
@@ -73,7 +73,7 @@ with sync_playwright() as p:
 
     for slug, text in [("closed-wedding", "Uploads for this event are now closed."), ("expired-wedding", "This gallery has expired."),
                        ("draft-wedding", "isn’t open for photos yet"), ("no-such-wedding", "Event not found")]:
-        page.goto(f"{BASE}/event/{slug}")
+        page.goto(f"{BASE}/e/{slug}")
         page.wait_for_selector(f"text={text}")
         check(True, f"{slug} shows correct message")
     page.goto(f"{BASE}/event/closed-wedding")
@@ -93,10 +93,11 @@ with sync_playwright() as p:
     h.fill("input[placeholder=Jordan]", "Jordan")
     h.fill("input[placeholder=Taylor]", "Taylor")
     h.fill("input[type=date]", "2027-06-12")
-    h.click("text=Blush")
+    h.click("button.starter:has-text('Navy and Gold')")
+    h.click("label.icon-option:has-text('Rings')")
     h.fill("input[type=email]", "jordan@example.com")
     h.fill("input[type=password]", "our secret pw")
-    check(h.locator("text=guestphotodrop.com/event/jordan-and-taylor").count() == 1, "guest link preview from names")
+    check(h.locator("text=guestphotodrop.com/e/jordan-and-taylor").count() == 1, "guest link preview from names")
     h.screenshot(path=f"{OUT}/site-2-start.png", full_page=True)
     h.click("text=Continue to payment · $79")
     h.wait_for_selector("text=You’re all set!")
@@ -157,7 +158,7 @@ with sync_playwright() as p:
     d.wait_for_timeout(400)
     d.screenshot(path=f"{OUT}/desktop-6-cover-settings.png")
     g = browser.new_page(viewport={"width": 390, "height": 844}, device_scale_factor=2, is_mobile=True)
-    g.goto(BASE + "/event/jordan-and-taylor")
+    g.goto(BASE + "/e/jordan-and-taylor")
     g.wait_for_selector(".cover img")
     check(True, "guest page shows the couple photo")
     g.wait_for_timeout(400)

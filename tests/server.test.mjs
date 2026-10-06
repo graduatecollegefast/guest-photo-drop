@@ -409,7 +409,7 @@ const crypto = await import('node:crypto');
 
 const signup = (over = {}) => ({
   plan: 'wedding', eventType: 'Wedding', eventName: 'Ava & Noah', eventDate: '2027-06-12',
-  headline: '', theme: 'Blush', email: 'Ava@Example.com', password: 'our secret pw', ...over,
+  headline: '', colors: ['Sage', 'White', 'Gold'], icon: 'Rings', email: 'Ava@Example.com', password: 'our secret pw', ...over,
 });
 
 test('slugs and plan dates', () => {
@@ -428,6 +428,9 @@ test('create-checkout validates input and never trusts a client price', async ()
   assert.equal((await bad({ password: 'short' })).error, 'invalid_form');
   assert.equal((await bad({ eventDate: '1999-01-01' })).error, 'invalid_form');
   assert.equal((await bad({ plan: 'party', eventType: 'Wedding' })).error, 'invalid_form');
+  assert.equal((await bad({ colors: ['Sage'] })).error, 'invalid_form');
+  assert.equal((await bad({ colors: ['Sage', 'Gold', 'Navy', 'Blush'] })).error, 'invalid_form');
+  assert.equal((await bad({ colors: ['Sage', 'Neon'] })).error, 'invalid_form');
 
   const before = stripe.created;
   const res = await (await createCheckout(post('create-checkout', signup({ priceCents: 1, amount: 1 })))).json();
@@ -441,7 +444,8 @@ test('create-checkout validates input and never trusts a client price', async ()
   const ev = db.tblEvents.find((e) => e.fields['Event Slug'] === 'ava-and-noah');
   assert.ok(ev, 'draft event created');
   assert.equal(ev.fields.Status, 'Draft');
-  assert.equal(ev.fields.Theme, 'Blush');
+  assert.deepEqual(ev.fields.Colors, ['Sage', 'White', 'Gold']);
+  assert.equal(ev.fields.Icon, 'Rings');
   assert.equal(ev.fields['Owner Email'], 'ava@example.com');
   assert.equal(ev.fields['Stripe Session ID'], session.id);
   assert.ok(ev.fields['Dashboard Password Hash'].startsWith('scrypt:'));

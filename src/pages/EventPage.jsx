@@ -9,7 +9,7 @@ import SuccessScreen from '../components/SuccessScreen.jsx';
 import { validateFile, acceptAttribute } from '../utils/fileValidation.js';
 import { EVENT_STATUS_MESSAGES } from '../utils/errors.js';
 import { formatDate } from '../utils/format.js';
-import { Heart, HeartTrio, HeartDivider } from '../components/Hearts.jsx';
+import { Heart, HeartTrio, HeartDivider, IconContext } from '../components/Hearts.jsx';
 import { useEventTheme, hostsWord } from '../utils/theme.js';
 
 export default function EventPage() {
@@ -28,7 +28,7 @@ export default function EventPage() {
     };
   }, [slug]);
 
-  useEventTheme(state.event?.theme);
+  useEventTheme(state.event?.colors);
 
   useEffect(() => {
     if (state.event?.name) document.title = `${state.event.name} · Share your photos`;
@@ -62,16 +62,22 @@ export default function EventPage() {
   const event = state.event;
   if (event.status !== 'active') {
     return (
-      <main className="guest">
+      <IconContext.Provider value={event.icon || 'Hearts'}>
+      <main className="guest" data-icon={event.icon || 'Hearts'}>
         {event.name && <Hero event={event} />}
         <section className="card center-card" role="status">
           <p className="status-message">{EVENT_STATUS_MESSAGES[event.status] || EVENT_STATUS_MESSAGES.draft}</p>
         </section>
       </main>
+      </IconContext.Provider>
     );
   }
 
-  return <ActiveEvent event={event} slug={slug} />;
+  return (
+    <IconContext.Provider value={event.icon || 'Hearts'}>
+      <ActiveEvent event={event} slug={slug} />
+    </IconContext.Provider>
+  );
 }
 
 function Hero({ event }) {
@@ -126,7 +132,7 @@ function ActiveEvent({ event, slug }) {
   const effectivePhase = allDone ? 'done' : phase;
 
   return (
-    <main className="guest">
+    <main className="guest" data-icon={event.icon || 'Hearts'}>
       {(effectivePhase === 'pick' || effectivePhase === 'thanks') && <Hero event={event} />}
 
       {effectivePhase === 'pick' && (

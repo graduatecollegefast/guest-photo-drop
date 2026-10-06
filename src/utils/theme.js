@@ -1,20 +1,22 @@
 import { useEffect } from 'react';
+import { themeVars } from './palette.js';
 
-// "Silver Red Purple" -> "silver-red-purple"; matches [data-theme] blocks in styles/themes.css
-export function themeSlug(name) {
-  return String(name || 'Silver Red Purple').toLowerCase().replace(/[^a-z0-9]+/g, '-');
-}
-
-// Applies the event's chosen theme to the whole page while it is shown.
-export function useEventTheme(theme) {
+// Applies the event's picked colors to the whole page while it is shown.
+export function useEventTheme(colors) {
+  const key = Array.isArray(colors) ? colors.join('|') : '';
   useEffect(() => {
-    if (!theme) return undefined;
+    if (!key) return undefined;
     const root = document.documentElement;
-    root.dataset.theme = themeSlug(theme);
+    const vars = themeVars(key.split('|'));
+    Object.entries(vars).forEach(([k, v]) => root.style.setProperty(k, v));
+    const meta = document.querySelector('meta[name="theme-color"]');
+    const prevMeta = meta && meta.getAttribute('content');
+    if (meta) meta.setAttribute('content', vars['--primary']);
     return () => {
-      delete root.dataset.theme;
+      Object.keys(vars).forEach((k) => root.style.removeProperty(k));
+      if (meta && prevMeta) meta.setAttribute('content', prevMeta);
     };
-  }, [theme]);
+  }, [key]);
 }
 
 export function hostsWord(eventType) {

@@ -21,7 +21,7 @@ export default function DashboardFinder() {
           <h1 className="names small-names">Sign in to your event</h1>
           <label className="field">
             <span className="field-label">Your guest link</span>
-            <input value={value} onChange={(e) => setValue(e.target.value)} placeholder="guestphotodrop.com/event/jordan-and-taylor" required />
+            <input value={value} onChange={(e) => setValue(e.target.value)} placeholder="guestphotodrop.com/e/jordan-and-taylor" required />
           </label>
           {error && (
             <p className="form-error" role="alert">

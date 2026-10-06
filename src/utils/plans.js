@@ -26,12 +26,25 @@ export const PLANS = [
 
 export const EVENT_TYPES = ['Wedding', 'Birthday', 'Shower', 'Graduation', 'Reunion', 'Other'];
 
-export const THEMES = [
-  { name: 'Silver Red Purple', swatch: ['#4a2266', '#b0172f', '#a9a9b6'] },
-  { name: 'Classic Ivory', swatch: ['#2f2723', '#a8875a', '#e9dccb'] },
-  { name: 'Blush', swatch: ['#8a3b55', '#d4708c', '#f3e1e6'] },
-  { name: 'Midnight', swatch: ['#1d2a4d', '#b8923a', '#e3e6ee'] },
-];
+// Example text for the event name, by event type (weddings use two name fields).
+export const NAME_EXAMPLES = {
+  Birthday: 'Maya’s 30th Birthday',
+  Shower: 'Ava’s Baby Shower',
+  Graduation: 'Marcus’s Class of 2027',
+  Reunion: 'Johnson Family Reunion',
+  Other: 'Our Celebration',
+};
+
+export const HEADLINE_EXAMPLES = {
+  Wedding: 'Help us remember the day through your eyes.',
+  Birthday: 'Share your favorite moments from the party.',
+  Shower: 'Share your favorite moments from the shower.',
+  Graduation: 'Share your favorite moments from the celebration.',
+  Reunion: 'Share your favorite moments from the reunion.',
+  Other: 'Share your favorite moments with us.',
+};
+
+export const DEFAULT_ICON = { Wedding: 'Hearts', Shower: 'Florals', Birthday: 'Sparkles', Graduation: 'Sparkles', Reunion: 'Sparkles', Other: 'Sparkles' };
 
 export function slugPreview(name) {
   return String(name || '')

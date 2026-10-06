@@ -1,10 +1,10 @@
 // POST /.netlify/functions/create-checkout
-// { plan, eventType, eventName, eventDate, headline, email, password, theme }
+// { plan, eventType, eventName, eventDate, headline, email, password, colors: [2-3 names], icon }
 // Creates the customer and a Draft event, then a Stripe Checkout session. The event only
 // switches on after Stripe confirms payment (see stripe-webhook and checkout-status).
 
 import { handler, json, requireMethod, readJson, ensureConfigured, HttpError, cleanText } from '../lib/http.mjs';
-import { PLANS, EVENT_TYPES, THEMES } from '../lib/plans.mjs';
+import { PLANS, EVENT_TYPES, COLORS, ICONS, DEFAULT_ICON } from '../lib/plans.mjs';
 import { hashPassword } from '../lib/session.mjs';
 import { createRecord, updateRecord } from '../lib/airtable.mjs';
 import { uniqueSlug, findOrCreateCustomer, randomToken } from '../lib/orders.mjs';
@@ -43,9 +43,11 @@ export function validateSignup(body, today) {
   if (!EMAIL_RE.test(email)) throw bad('Please enter a valid email address.');
   const password = typeof body.password === 'string' ? body.password.trim() : '';
   if (password.length < 8 || password.length > 128) throw bad('Your dashboard password needs at least 8 characters.');
-  const theme = THEMES.includes(body.theme) ? body.theme : THEMES[0];
+  const colors = Array.isArray(body.colors) ? [...new Set(body.colors.filter((c) => COLORS.includes(c)))] : [];
+  if (colors.length < 2 || colors.length > 3) throw bad('Please pick 2 or 3 colors.');
+  const icon = ICONS.includes(body.icon) ? body.icon : DEFAULT_ICON[eventType];
   const headline = cleanText(body.headline, 100) || DEFAULT_HEADLINES[eventType];
-  return { plan, eventType, eventName, eventDate, email, password, theme, headline };
+  return { plan, eventType, eventName, eventDate, email, password, colors, icon, headline };
 }
 
 export default handler('create-checkout', async (req) => {
@@ -73,7 +75,8 @@ export default handler('create-checkout', async (req) => {
     'Event Date': form.eventDate,
     Status: 'Draft',
     Headline: form.headline,
-    Theme: form.theme,
+    Colors: form.colors,
+    Icon: form.icon,
     'Allow Photos': true,
     'Allow Videos': true,
     'Maximum Files Per Upload': 50,

@@ -8,12 +8,12 @@ import Gallery from '../components/Gallery.jsx';
 import DownloadPanel from '../components/DownloadPanel.jsx';
 import SettingsPanel from '../components/SettingsPanel.jsx';
 import { formatDate } from '../utils/format.js';
-import { Heart } from '../components/Hearts.jsx';
+import { Heart, IconContext } from '../components/Hearts.jsx';
 
 export default function Dashboard() {
   const { slug } = useParams();
   const auth = useDashboardAuth(slug);
-  useEventTheme(auth.event?.theme);
+  useEventTheme(auth.event?.colors);
   const [view, setView] = useState('gallery');
   const [expired, setExpired] = useState(false);
 
@@ -55,6 +55,7 @@ export default function Dashboard() {
   };
 
   return (
+    <IconContext.Provider value={event.icon || 'Hearts'}>
     <main className="dash">
       <header className="dash-header">
         <div>
@@ -92,5 +93,6 @@ export default function Dashboard() {
       {view === 'download' && <DownloadPanel onUnauthorized={onUnauthorized} />}
       {view === 'settings' && <SettingsPanel event={event} onChanged={auth.refresh} onUnauthorized={onUnauthorized} />}
     </main>
+    </IconContext.Provider>
   );
 }
