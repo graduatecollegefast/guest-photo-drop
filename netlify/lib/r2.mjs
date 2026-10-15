@@ -98,6 +98,17 @@ export async function deleteEventFiles(eventId) {
   return { deleted };
 }
 
+// Permanently deletes specific objects, all of which must sit inside this event's folder.
+export async function deleteEventObjects(eventId, keys) {
+  const prefix = `events/${eventId}/`;
+  const list = keys.filter(Boolean);
+  if (!/^evt_[a-z0-9]{6,40}$/.test(eventId) || list.some((k) => !k.startsWith(prefix) || k.includes('..'))) {
+    throw new Error('refusing to delete objects outside the event folder');
+  }
+  if (list.length) await deleteKeys(list);
+  return { deleted: list.length };
+}
+
 export function eventPrefix(eventId) {
   return `events/${eventId}/`;
 }

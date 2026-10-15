@@ -59,8 +59,8 @@ function Terms() {
 
       <h2>Removing content</h2>
       <p>
-        Hosts can hide any photo or video from their album at any time from the dashboard. To have a file permanently
-        removed, the host, or a guest who uploaded it or appears in it, can email <Mail /> with the event name and a
+        Hosts can hide or permanently delete any photo or video from their album at any time from the dashboard. Deleted
+        files cannot be recovered. A guest who uploaded a file or appears in it can ask to have it removed by emailing <Mail /> with the event name and a
         description of the file. We aim to respond within 5 business days. Hosts can also ask us to delete their whole event
         early.
       </p>

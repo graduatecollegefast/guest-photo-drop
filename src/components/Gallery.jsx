@@ -94,6 +94,20 @@ export default function Gallery({ onChanged, onUnauthorized }) {
       if (err.status === 401) return onUnauthorized();
       throw err;
     }
+    removeFromList(item);
+  };
+
+  const deleteItem = async (item) => {
+    try {
+      await api.deleteMedia(item.id);
+    } catch (err) {
+      if (err.status === 401) return onUnauthorized();
+      throw err;
+    }
+    removeFromList(item);
+  };
+
+  const removeFromList = (item) => {
     const next = items.filter((i) => i.id !== item.id);
     setItems(next);
     setOpenIndex((idx) => (idx >= next.length ? next.length - 1 : idx));
@@ -176,6 +190,7 @@ export default function Gallery({ onChanged, onUnauthorized }) {
           }}
           onClose={() => setOpenIndex(-1)}
           onToggleHidden={toggleHidden}
+          onDelete={deleteItem}
         />
       )}
     </section>

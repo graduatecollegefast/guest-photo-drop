@@ -58,6 +58,7 @@ export const api = {
     return call(`dashboard-media?${q}`);
   },
   hideMedia: (uploadId, hidden = true) => call('hide-media', { method: 'POST', body: { uploadId, hidden } }),
+  deleteMedia: (uploadId) => call('delete-media', { method: 'POST', body: { uploadId } }),
   coverUploadUrl: () => call('cover-upload-url', { method: 'POST' }),
   setCover: (key) => call('set-cover', { method: 'POST', body: { key } }),
   removeCover: () => call('set-cover', { method: 'POST', body: { remove: true } }),

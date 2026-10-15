@@ -2,12 +2,13 @@ import React, { useEffect, useRef, useState } from 'react';
 import { formatDateTime, formatBytes } from '../utils/format.js';
 
 // Fullscreen viewer. Loads only the open item at display size (never the grid's originals).
-export default function MediaViewer({ items, index, onIndex, onClose, onToggleHidden }) {
+export default function MediaViewer({ items, index, onIndex, onClose, onToggleHidden, onDelete }) {
   const item = items[index];
   const closeRef = useRef(null);
   const touch = useRef(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [confirming, setConfirming] = useState(false);
   const hasPrev = index > 0;
   const hasNext = index < items.length - 1;
 
@@ -24,6 +25,7 @@ export default function MediaViewer({ items, index, onIndex, onClose, onToggleHi
 
   useEffect(() => {
     setError('');
+    setConfirming(false);
   }, [index]);
 
   useEffect(() => {
@@ -44,6 +46,20 @@ export default function MediaViewer({ items, index, onIndex, onClose, onToggleHi
     setError('');
     try {
       await onToggleHidden(item);
+      if (items.length <= 1) onClose();
+    } catch {
+      setError('That didn’t work. Please try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async () => {
+    setBusy(true);
+    setError('');
+    try {
+      await onDelete(item);
+      setConfirming(false);
       if (items.length <= 1) onClose();
     } catch {
       setError('That didn’t work. Please try again.');
@@ -100,10 +116,26 @@ export default function MediaViewer({ items, index, onIndex, onClose, onToggleHi
         <button type="button" className="viewer-btn" onClick={toggle} disabled={busy}>
           {busy ? '…' : hidden ? 'Restore' : 'Hide'}
         </button>
+        <button type="button" className="viewer-btn viewer-btn-danger" onClick={() => setConfirming(true)} disabled={busy}>
+          Delete
+        </button>
         <button type="button" className="viewer-btn" onClick={() => onIndex(index + 1)} disabled={!hasNext} aria-label="Next">
           <span className="hide-sm">Next</span> ›
         </button>
       </div>
+      {confirming && (
+        <div className="viewer-confirm" role="alertdialog" aria-label="Confirm delete">
+          <p>Delete this {item.type === 'video' ? 'video' : 'photo'} forever? It can’t be recovered.</p>
+          <div className="viewer-confirm-actions">
+            <button type="button" className="viewer-btn" onClick={() => setConfirming(false)} disabled={busy}>
+              Cancel
+            </button>
+            <button type="button" className="viewer-btn viewer-btn-danger" onClick={remove} disabled={busy}>
+              {busy ? 'Deleting…' : 'Yes, delete forever'}
+            </button>
+          </div>
+        </div>
+      )}
       {error && (
         <p className="viewer-error" role="alert">
           {error}

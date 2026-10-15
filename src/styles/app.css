@@ -230,6 +230,11 @@ p { margin: 0 0 0.6em; }
 .viewer-btn:disabled { opacity: 0.35; cursor: default; }
 .viewer-btn:hover:not(:disabled) { background: rgba(255, 255, 255, 0.18); }
 .viewer-error { text-align: center; color: #ffb4a8; margin: 0 0 0.6rem; }
+.viewer-btn-danger { color: #ffb4a8; border-color: rgba(255, 180, 168, 0.5); }
+.viewer-btn-danger:hover:not(:disabled) { background: rgba(255, 120, 100, 0.22); }
+.viewer-confirm { text-align: center; color: #fff; padding: 0 1rem 0.9rem; }
+.viewer-confirm p { margin: 0 0 0.6rem; }
+.viewer-confirm-actions { display: flex; justify-content: center; flex-wrap: wrap; gap: 0.5rem; }
 @media (max-width: 480px) { .hide-sm { display: none; } }
 
 /* Settings */

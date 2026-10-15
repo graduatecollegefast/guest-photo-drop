@@ -32,6 +32,7 @@ const HOST_GUIDES = [
     </ol>
   )],
   ['How do I hide a photo or video?', <p>In <strong>View gallery</strong>, open the item and tap <strong>Hide</strong>. Hidden items stay safe in the <strong>Hidden</strong> tab and are left out of downloads. Open one and tap <strong>Restore</strong> to bring it back.</p>],
+  ['How do I delete a photo or video?', <p>In <strong>View gallery</strong>, open the item, tap <strong>Delete</strong>, then <strong>Yes, delete forever</strong>. It is removed from storage right away and can’t be recovered, and the space goes back to your album.</p>],
   ['Where is my QR code?', <p>Open <strong>Event settings</strong> and tap <strong>Download QR code</strong> to save a print-ready image, or <strong>Copy link</strong> to share it by text or email.</p>],
   ['How do I change my headline, message or colors?', <p>Open <strong>Event settings</strong>, go to <strong>Edit your page</strong>, make your changes and tap <strong>Save changes</strong>. Guests see them within a minute.</p>],
   ['How do I add a photo of us to the page?', <p>Open <strong>Event settings</strong> and tap <strong>Add your photo</strong> under <strong>Your photo</strong>. It shows at the top of your guest page.</p>],

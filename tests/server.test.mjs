@@ -33,6 +33,7 @@ const login = (await import('../netlify/functions/dashboard-login.mjs')).default
 const dashboardEvent = (await import('../netlify/functions/dashboard-event.mjs')).default;
 const dashboardMedia = (await import('../netlify/functions/dashboard-media.mjs')).default;
 const hideMedia = (await import('../netlify/functions/hide-media.mjs')).default;
+const deleteMedia = (await import('../netlify/functions/delete-media.mjs')).default;
 const prepareDownload = (await import('../netlify/functions/prepare-download.mjs')).default;
 const coverUploadUrl = (await import('../netlify/functions/cover-upload-url.mjs')).default;
 const setCover = (await import('../netlify/functions/set-cover.mjs')).default;
@@ -420,6 +421,36 @@ test('dashboard: counts, paginated media, hide, and download links', async () =>
   assert.equal(dl.files.length, 59);
   assert.equal(dl.files[0].name, 'photos/0001.heic');
   assert.ok(dl.files.every((f) => f.url.includes('X-Amz-Signature=') && f.bytes === 1000000));
+});
+
+test('delete: host removes one file from storage for good and frees its space', async () => {
+  seedEvent('delete-event', { 'Event ID': 'evt_del000111' });
+  seedEvent('other-event', { 'Event ID': 'evt_oth000222' });
+  const add = (eventId, uploadId) => {
+    const key = `events/${eventId}/originals/${uploadId}.jpg`;
+    const tk = `events/${eventId}/thumbs/${uploadId}.jpg`;
+    r2.set(key, 5000);
+    r2.set(tk, 300);
+    db.tblUploads.push({ id: `rec${uploadId}`, fields: { 'Upload ID': uploadId, 'Event Key': eventId, Status: 'Active', 'Resource Type': 'image', 'Storage Key': key, 'Thumb Key': tk, 'File Size': 5000 } });
+  };
+  add('evt_del000111', 'del-upload-01');
+  add('evt_oth000222', 'oth-upload-01');
+  const cookie = hostCookie('delete-event');
+
+  assert.equal((await deleteMedia(post('delete-media', { uploadId: 'del-upload-01' }))).status, 401);
+  assert.equal((await deleteMedia(post('delete-media', { uploadId: 'oth-upload-01' }, { cookie }))).status, 404, "can't delete another event's file");
+  assert.ok(r2.has('events/evt_oth000222/originals/oth-upload-01.jpg'));
+
+  const res = await deleteMedia(post('delete-media', { uploadId: 'del-upload-01' }, { cookie }));
+  assert.equal(res.status, 200);
+  assert.ok(!r2.has('events/evt_del000111/originals/del-upload-01.jpg'), 'original gone');
+  assert.ok(!r2.has('events/evt_del000111/thumbs/del-upload-01.jpg'), 'preview gone');
+  const f = db.tblUploads.find((r) => r.id === 'recdel-upload-01').fields;
+  assert.equal(f.Status, 'Deleted');
+  assert.equal(f['File Size'], 0, 'space goes back to the album');
+  assert.equal((await deleteMedia(post('delete-media', { uploadId: 'del-upload-01' }, { cookie }))).status, 200, 'safe to repeat');
+  const list = await (await dashboardMedia(req('dashboard-media?status=Active', { headers: { cookie } }))).json();
+  assert.ok(!list.items.some((i) => i.id === 'del-upload-01'));
 });
 
 test('couple photo: uploaded to the cover folder, shown through a signed link, removable', async () => {

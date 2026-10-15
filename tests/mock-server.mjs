@@ -13,6 +13,7 @@ const PORT = Number(process.env.PORT || 4599);
 export const stats = { storage: {}, thumbs: {}, registered: {}, regAttempts: {} };
 let authed = false;
 let hidden = new Set();
+let deleted = new Set();
 let cover = '';
 let lastSignup = null;
 let adminAuthed = false;
@@ -50,7 +51,7 @@ function eventFor(slug) {
   };
 }
 
-const items = Array.from({ length: 64 }, (_, i) => ({
+let items = Array.from({ length: 64 }, (_, i) => ({
   id: `item-${String(i).padStart(4, '0')}`,
   type: i % 9 === 0 ? 'video' : 'image',
   format: i % 9 === 0 ? 'mov' : 'jpg',
@@ -180,6 +181,13 @@ const server = http.createServer(async (req, res) => {
       if (body.hidden) hidden.add(body.uploadId);
       else hidden.delete(body.uploadId);
       return send(res, 200, { ok: true });
+    }
+    if (fn === 'delete-media') {
+      const body = JSON.parse((await readBody(req)).toString());
+      deleted.add(body.uploadId);
+      hidden.delete(body.uploadId);
+      items = items.filter((i) => i.id !== body.uploadId);
+      return send(res, 200, { ok: true, status: 'Deleted' });
     }
     if (fn === 'cover-upload-url') {
       return send(res, 200, { ok: true, upload: { key: 'events/evt_mock/cover/00000000-0000-0000-0000-000000000000.jpg', putUrl: '/mock-r2/thumb?name=cover', contentType: 'image/jpeg' } });
