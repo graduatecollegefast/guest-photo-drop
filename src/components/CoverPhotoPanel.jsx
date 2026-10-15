@@ -1,8 +1,8 @@
 import React, { useRef, useState } from 'react';
 import { api } from '../services/api.js';
-import { uploadToCloudinary } from '../services/cloudinary.js';
+import { putFile } from '../services/storage.js';
+import { scaleImage } from '../utils/thumbnail.js';
 import { validateFile } from '../utils/fileValidation.js';
-import { newId } from '../utils/format.js';
 
 // Lets the couple add, change or remove the photo shown at the top of their guest page.
 export default function CoverPhotoPanel({ event, onChanged, onUnauthorized }) {
@@ -20,14 +20,18 @@ export default function CoverPhotoPanel({ event, onChanged, onUnauthorized }) {
     if (!check.ok) return setState({ status: 'idle', progress: 0, error: check.reason });
     setState({ status: 'uploading', progress: 0, error: '' });
     try {
-      const result = await uploadToCloudinary({
-        file,
-        uploadId: newId(),
-        getSignature: async () => (await api.coverSignature()).upload,
+      // Resized in the browser so guests on weak signal load it fast.
+      const sized = await scaleImage(file, 1600, 0.85);
+      if (!sized) throw new Error('We couldn’t read this photo. Please try a JPG or PNG.');
+      const { upload } = await api.coverUploadUrl();
+      await putFile({
+        url: upload.putUrl,
+        blob: sized.blob,
+        contentType: upload.contentType,
         onProgress: (p) => setState((s) => ({ ...s, progress: p })),
       });
       setState({ status: 'saving', progress: 1, error: '' });
-      await api.setCover(result);
+      await api.setCover(upload.key);
       setState({ status: 'idle', progress: 0, error: '' });
       onChanged && onChanged();
     } catch (err) {

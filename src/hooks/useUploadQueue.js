@@ -5,7 +5,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, ApiError } from '../services/api.js';
-import { uploadToCloudinary, UploadError } from '../services/cloudinary.js';
+import { putFile, UploadError } from '../services/storage.js';
+import { makeThumbnail } from '../utils/thumbnail.js';
 import { uploadErrorMessage } from '../utils/errors.js';
 import { newId } from '../utils/format.js';
 
@@ -27,7 +28,7 @@ function getSessionId() {
   }
 }
 
-// Uploads that reached Cloudinary but are not yet recorded in Airtable are kept in
+// Uploads that reached storage but are not yet recorded in Airtable are kept in
 // sessionStorage, so a refresh or a later visit can finish saving them.
 function pendingKey(slug) {
   return `wp-pending:${slug}`;
@@ -55,7 +56,6 @@ export function useUploadQueue({ slug, concurrency = DEFAULT_CONCURRENCY }) {
   const running = useRef(0);
   const guestName = useRef('');
   const sessionId = useMemo(getSessionId, []);
-  const sigRef = useRef({ data: null, promise: null, reserved: 0 });
   const mounted = useRef(true);
 
   const update = useCallback(
@@ -66,24 +66,54 @@ export function useUploadQueue({ slug, concurrency = DEFAULT_CONCURRENCY }) {
     [rerender]
   );
 
-  const getSignature = useCallback(
-    async (force) => {
-      const s = sigRef.current;
-      if (!force && s.data && s.data.expiresAt - Date.now() > 5 * 60 * 1000) return s.data;
-      if (!force && s.promise) return s.promise;
-      s.promise = api
-        .uploadSignature(slug, sessionId)
-        .then((res) => {
-          s.data = res.upload;
-          s.reserved = 0;
-          return s.data;
-        })
-        .finally(() => {
-          s.promise = null;
-        });
-      return s.promise;
+  // Uploads one file (and its preview) straight to storage. Returns what record-upload needs.
+  const uploadOne = useCallback(
+    async (item) => {
+      const meta = { slug, sessionId, uploadId: item.id, name: item.name, type: item.file.type, size: item.file.size, kind: item.kind };
+      let { ticket } = await api.uploadTicket(meta);
+      const thumbPromise = makeThumbnail(item.file, item.kind);
+      let attempt = 0;
+      for (;;) {
+        try {
+          if (Date.now() > ticket.expiresAt) ({ ticket } = await api.uploadTicket(meta));
+          await putFile({
+            url: ticket.putUrl,
+            blob: item.file,
+            contentType: ticket.contentType,
+            onProgress: (p) => update(item.id, { progress: Math.min(p, 0.99) }),
+          });
+          break;
+        } catch (err) {
+          attempt += 1;
+          if (err instanceof UploadError && err.kind === 'expired' && attempt <= 1) {
+            ({ ticket } = await api.uploadTicket(meta));
+            continue;
+          }
+          const retryable = err instanceof UploadError && (err.kind === 'network' || err.kind === 'storage');
+          if (!retryable || attempt > UPLOAD_AUTO_RETRIES || !navigator.onLine) throw err;
+          await sleep(1500 * attempt);
+        }
+      }
+      const thumb = await thumbPromise;
+      let thumbKey;
+      if (thumb) {
+        try {
+          await putFile({ url: ticket.thumbPutUrl, blob: thumb.blob, contentType: 'image/jpeg' });
+          thumbKey = ticket.thumbKey;
+        } catch {
+          /* the gallery falls back to the full file */
+        }
+      }
+      return {
+        key: ticket.key,
+        thumbKey,
+        kind: item.kind,
+        width: thumb ? thumb.width : undefined,
+        height: thumb ? thumb.height : undefined,
+        duration: thumb ? thumb.duration : undefined,
+      };
     },
-    [slug, sessionId]
+    [slug, sessionId, update]
   );
 
   const register = useCallback(
@@ -121,33 +151,7 @@ export function useUploadQueue({ slug, concurrency = DEFAULT_CONCURRENCY }) {
       try {
         let result = item.result;
         if (!result) {
-          // Album storage cap: skip files that won't fit in the space left.
-          const sig = await getSignature(false);
-          const size = item.file ? item.file.size : 0;
-          if (typeof sig.remainingBytes === 'number') {
-            if (size > sig.remainingBytes - sigRef.current.reserved) {
-              update(item.id, { status: 'failed', errorKind: 'album_full', error: uploadErrorMessage('album_full', item.kind) });
-              return;
-            }
-            sigRef.current.reserved += size;
-          }
-          let attempt = 0;
-          for (;;) {
-            try {
-              result = await uploadToCloudinary({
-                file: item.file,
-                uploadId: `${item.id}-${item.attempts}-${attempt}`,
-                getSignature,
-                onProgress: (p) => update(item.id, { progress: Math.min(p, 0.99) }),
-              });
-              break;
-            } catch (err) {
-              attempt += 1;
-              const retryable = err instanceof UploadError && (err.kind === 'network' || err.kind === 'cloudinary');
-              if (!retryable || attempt > UPLOAD_AUTO_RETRIES || !navigator.onLine) throw err;
-              await sleep(1500 * attempt);
-            }
-          }
+          result = await uploadOne(item);
           update(item.id, { result, status: 'saving', progress: 1 });
           const pending = readPending(slug);
           pending[item.id] = { result, name: item.name, guestName: guestName.current };
@@ -169,9 +173,12 @@ export function useUploadQueue({ slug, concurrency = DEFAULT_CONCURRENCY }) {
       } catch (err) {
         let kind = 'network';
         let serverMessage;
-        if (err instanceof UploadError) kind = err.kind === 'stale' ? 'network' : err.kind;
+        if (err instanceof UploadError) kind = err.kind === 'expired' || err.kind === 'storage' ? 'network' : err.kind;
         else if (err instanceof ApiError) {
-          if (['event_closed', 'event_expired', 'event_not_open', 'event_not_found', 'album_full'].includes(err.code)) {
+          if (err.code === 'album_full') kind = 'album_full';
+          else if (err.code === 'too_large') kind = 'too_large';
+          else if (err.code === 'unsupported_file') kind = 'unsupported';
+          else if (['event_closed', 'event_expired', 'event_not_open', 'event_not_found'].includes(err.code)) {
             kind = 'event';
             serverMessage = err.message;
           } else if (err.code === 'offline') kind = 'offline';
@@ -183,7 +190,7 @@ export function useUploadQueue({ slug, concurrency = DEFAULT_CONCURRENCY }) {
         if (mounted.current) pumpRef.current();
       }
     },
-    [getSignature, register, slug, update]
+    [uploadOne, register, slug, update]
   );
 
   const pump = useCallback(() => {
@@ -241,7 +248,7 @@ export function useUploadQueue({ slug, concurrency = DEFAULT_CONCURRENCY }) {
   const retry = useCallback(
     (id) => {
       itemsRef.current = itemsRef.current.map((it) =>
-        it.status === 'failed' && (!id || it.id === id) && it.errorKind !== 'too_large' && it.errorKind !== 'unsupported'
+        it.status === 'failed' && (!id || it.id === id) && it.errorKind !== 'too_large' && it.errorKind !== 'unsupported' && it.errorKind !== 'album_full'
           ? { ...it, status: 'queued', error: null, errorKind: null, attempts: it.attempts + 1 }
           : it
       );

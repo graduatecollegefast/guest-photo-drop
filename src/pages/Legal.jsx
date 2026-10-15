@@ -127,7 +127,7 @@ function Privacy() {
 
       <h2>Service providers</h2>
       <p>
-        We use trusted providers to run the service: Netlify (website hosting), Cloudinary (photo and video storage), Airtable
+        We use trusted providers to run the service: Netlify (website hosting), Cloudflare (photo and video storage), Airtable
         (event records), Stripe (payments) and Resend (email). They process data only on our behalf.
       </p>
 

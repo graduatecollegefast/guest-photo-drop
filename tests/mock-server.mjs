@@ -1,7 +1,7 @@
 // Local UI test server: serves the built app (dist/) and fakes the Netlify Functions and
-// Cloudinary so the full guest flow can be exercised in a real browser without credentials.
+// storage so the full guest flow can be exercised in a real browser without credentials.
 //   npm run build && node tests/mock-server.mjs   -> http://localhost:4599/event/jordan-and-taylor
-// Files whose name contains FAIL fail their first 3 Cloudinary attempts (so the guest sees a
+// Files whose name contains FAIL fail their first 3 storage uploads (so the guest sees a
 // failure and retries). Files containing REGFAIL fail record-upload 4 times.
 
 import http from 'node:http';
@@ -10,7 +10,7 @@ import path from 'node:path';
 
 const DIST = path.resolve('dist');
 const PORT = Number(process.env.PORT || 4599);
-export const stats = { cloudinary: {}, registered: {}, regAttempts: {} };
+export const stats = { storage: {}, thumbs: {}, registered: {}, regAttempts: {} };
 let authed = false;
 let hidden = new Set();
 let cover = '';
@@ -79,16 +79,21 @@ const server = http.createServer(async (req, res) => {
       const ev = eventFor(url.searchParams.get('slug'));
       return ev ? send(res, 200, { ok: true, event: ev }) : send(res, 404, { ok: false, error: 'event_not_found', message: "We couldn't find this wedding." });
     }
-    if (fn === 'upload-signature') {
-      return send(res, 200, { ok: true, upload: { url: '/mock-cloudinary', apiKey: '1', signature: 'sig', params: { timestamp: 1, folder: 'f' }, expiresAt: Date.now() + 3e6 } });
+    if (fn === 'upload-ticket') {
+      const body = JSON.parse((await readBody(req)).toString());
+      const q = encodeURIComponent(body.name);
+      const ext = (body.name.split('.').pop() || 'jpg').toLowerCase();
+      return send(res, 200, { ok: true, ticket: {
+        key: `events/evt_mock/originals/${body.uploadId}.${ext}`, putUrl: `/mock-r2/put?name=${q}`, contentType: body.kind === 'video' ? 'video/quicktime' : 'image/jpeg',
+        thumbKey: `events/evt_mock/thumbs/${body.uploadId}.jpg`, thumbPutUrl: `/mock-r2/thumb?name=${q}`, expiresAt: Date.now() + 3e6 } });
     }
     if (fn === 'record-upload') {
       const body = JSON.parse((await readBody(req)).toString());
       const name = body.originalFilename;
       stats.regAttempts[name] = (stats.regAttempts[name] || 0) + 1;
       if (name.includes('REGFAIL') && stats.regAttempts[name] <= 4) return send(res, 502, { ok: false, error: 'database_error', message: 'x' });
-      const dup = Boolean(stats.registered[body.result.asset_id]);
-      stats.registered[body.result.asset_id] = name;
+      const dup = Boolean(stats.registered[body.result.key]);
+      stats.registered[body.result.key] = name;
       return send(res, 200, { ok: true, uploadId: body.uploadId, duplicate: dup });
     }
     if (fn === 'create-checkout') {
@@ -176,8 +181,8 @@ const server = http.createServer(async (req, res) => {
       else hidden.delete(body.uploadId);
       return send(res, 200, { ok: true });
     }
-    if (fn === 'cover-signature') {
-      return send(res, 200, { ok: true, upload: { url: '/mock-cloudinary', apiKey: '1', signature: 'sig', params: { timestamp: 1, folder: 'cover' }, expiresAt: Date.now() + 3e6 } });
+    if (fn === 'cover-upload-url') {
+      return send(res, 200, { ok: true, upload: { key: 'events/evt_mock/cover/00000000-0000-0000-0000-000000000000.jpg', putUrl: '/mock-r2/thumb?name=cover', contentType: 'image/jpeg' } });
     }
     if (fn === 'set-cover') {
       const body = JSON.parse((await readBody(req)).toString());
@@ -185,21 +190,24 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, { ok: true, coverImageUrl: cover });
     }
     if (fn === 'prepare-download') {
-      return send(res, 200, { ok: true, totals: { photos: 57, videos: 7 }, parts: [{ type: 'image', label: 'Photos — part 1 of 2', count: 40, url: '#' }, { type: 'image', label: 'Photos — part 2 of 2', count: 17, url: '#' }, { type: 'video', label: 'Videos — part 1 of 2', count: 4, url: '#' }, { type: 'video', label: 'Videos — part 2 of 2', count: 3, url: '#' }] });
+      const vis = items.filter((i) => !hidden.has(i.id));
+      const files = vis.map((i, n) => ({ type: i.type, name: `${i.type === 'video' ? 'videos' : 'photos'}/${String(n + 1).padStart(4, '0')}.${i.type === 'video' ? 'mov' : 'svg'}`, bytes: i.type === 'video' ? 120 * 1024 * 1024 : 5 * 1024 * 1024, url: `/mock-img/${n}.svg` }));
+      return send(res, 200, { ok: true, name: 'jordan-and-taylor', totals: { photos: vis.filter((i) => i.type === 'image').length, videos: vis.filter((i) => i.type === 'video').length }, expiresInMinutes: 355, files });
     }
     return send(res, 404, { ok: false });
   }
 
-  if (url.pathname === '/mock-cloudinary') {
-    const raw = (await readBody(req)).toString('latin1');
-    const name = (raw.match(/filename="([^"]+)"/) || [])[1] || 'unknown';
-    stats.cloudinary[name] = (stats.cloudinary[name] || 0) + 1;
-    await new Promise((r) => setTimeout(r, 250 + Math.random() * 400));
-    if (name.includes('FAIL') && !name.includes('REGFAIL') && stats.cloudinary[name] <= 3) {
-      return send(res, 500, { error: { message: 'Simulated failure' } });
+  if (url.pathname === '/mock-r2/put' || url.pathname === '/mock-r2/thumb') {
+    await readBody(req);
+    const name = url.searchParams.get('name') || 'unknown';
+    if (url.pathname === '/mock-r2/thumb') {
+      stats.thumbs[name] = (stats.thumbs[name] || 0) + 1;
+      return send(res, 200, '');
     }
-    const id = Buffer.from(name).toString('hex').padEnd(32, '0').slice(0, 32);
-    return send(res, 200, { asset_id: id, public_id: `f/${name}`, version: 1, signature: 's', resource_type: /mov|mp4/i.test(name) ? 'video' : 'image', format: 'jpg', bytes: 100 });
+    stats.storage[name] = (stats.storage[name] || 0) + 1;
+    await new Promise((r) => setTimeout(r, 250 + Math.random() * 400));
+    if (name.includes('FAIL') && !name.includes('REGFAIL') && stats.storage[name] <= 3) return send(res, 500, 'Simulated failure');
+    return send(res, 200, '');
   }
 
   if (url.pathname === '/__stats') return send(res, 200, { ...stats, mockLog, lastSignup });

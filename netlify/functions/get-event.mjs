@@ -9,5 +9,5 @@ export default handler('get-event', async (req) => {
   ensureConfigured(['AIRTABLE_ACCESS_TOKEN', 'AIRTABLE_BASE_ID', 'AIRTABLE_EVENTS_TABLE_ID']);
   const slug = new URL(req.url).searchParams.get('slug');
   const event = await findEventBySlug(slug);
-  return json({ ok: true, event: toPublicEvent(event) });
+  return json({ ok: true, event: await toPublicEvent(event) });
 });

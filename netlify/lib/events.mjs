@@ -3,6 +3,7 @@
 import { config, IMAGE_FORMATS, VIDEO_FORMATS } from './config.mjs';
 import { listRecords, formulaString } from './airtable.mjs';
 import { HttpError, SLUG_RE } from './http.mjs';
+import { presign } from './r2.mjs';
 import { DEFAULT_COLORS, DEFAULT_ICON, DELETE_AFTER_DAYS, storageCapBytes } from './plans.mjs';
 
 const CACHE_MS = 30_000; // Changes in Airtable take effect within 30 seconds.
@@ -36,7 +37,8 @@ export function normalize(record) {
     rawStatus: f['Status'] || 'Draft',
     headline: f['Headline'] || '',
     welcomeMessage: f['Welcome Message'] || '',
-    coverImageUrl: f['Cover Image URL'] || '',
+    coverImageKey: f['Cover Image Key'] || '', // R2 key of the host's photo
+    coverImageUrl: f['Cover Image URL'] || '', // older events only
     allowPhotos: f['Allow Photos'] === true,
     allowVideos: f['Allow Videos'] === true,
     maxFilesPerUpload: Number(f['Maximum Files Per Upload']) > 0 ? Number(f['Maximum Files Per Upload']) : 50,
@@ -121,16 +123,13 @@ export function clearEventCache(slug) {
   cache.delete(slug);
 }
 
-// Host's own photo, kept apart from guest uploads so it never shows in the gallery, counts or downloads.
-export function coverFolder(event) {
-  return `events/${event.eventId}/cover`;
+// A viewable link to the host's photo (signed, valid 6 days; pages fetch a fresh one each visit).
+export async function coverUrl(event) {
+  if (event.coverImageKey) return presign('GET', event.coverImageKey, 6 * 86400);
+  return event.coverImageUrl || '';
 }
 
-export function storageFolder(event) {
-  return `events/${event.eventId}/originals`;
-}
-
-export function toPublicEvent(event) {
+export async function toPublicEvent(event) {
   const status = effectiveStatus(event);
   if (status === 'draft') {
     return { slug: event.slug, status };
@@ -148,7 +147,7 @@ export function toPublicEvent(event) {
     hostingEndDate: event.hostingEndDate,
     headline: event.headline,
     welcomeMessage: event.welcomeMessage,
-    coverImageUrl: event.coverImageUrl,
+    coverImageUrl: await coverUrl(event),
     allowPhotos: event.allowPhotos,
     allowVideos: event.allowVideos,
     maxFilesPerUpload: event.maxFilesPerUpload,

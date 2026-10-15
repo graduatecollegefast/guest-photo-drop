@@ -3,10 +3,10 @@
 // See lib/retention.mjs for the rules.
 
 import { runRetention } from '../lib/retention.mjs';
-import { missingConfig } from '../lib/config.mjs';
+import { missingConfig, R2_KEYS } from '../lib/config.mjs';
 
 export default async () => {
-  const missing = missingConfig(['AIRTABLE_ACCESS_TOKEN', 'AIRTABLE_BASE_ID', 'AIRTABLE_EVENTS_TABLE_ID', 'CLOUDINARY_CLOUD_NAME', 'CLOUDINARY_API_KEY', 'CLOUDINARY_API_SECRET', 'SITE_URL']);
+  const missing = missingConfig(['AIRTABLE_ACCESS_TOKEN', 'AIRTABLE_BASE_ID', 'AIRTABLE_EVENTS_TABLE_ID', ...R2_KEYS, 'SITE_URL']);
   if (missing.length) {
     console.error(`[daily-maintenance] not configured: ${missing.join(', ')}`);
     return new Response('not configured', { status: 503 });

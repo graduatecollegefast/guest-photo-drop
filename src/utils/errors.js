@@ -16,7 +16,7 @@ export function uploadErrorMessage(kind, mediaKind = 'image', serverMessage) {
     case 'album_full':
       return 'This album is full, so this file can’t be added. Please let the hosts know.';
     case 'network':
-    case 'cloudinary':
+    case 'storage':
     default:
       return `We couldn't upload this ${noun}. Your other ${noun}s are safe. Tap to try this one again.`;
   }

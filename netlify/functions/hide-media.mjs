@@ -1,5 +1,5 @@
 // POST /.netlify/functions/hide-media  { uploadId, hidden: true|false }
-// Sets the Upload status to Hidden (or back to Active). Never deletes the Cloudinary file.
+// Sets the Upload status to Hidden (or back to Active). Never deletes the stored file.
 
 import { handler, json, requireMethod, readJson, ensureConfigured, HttpError } from '../lib/http.mjs';
 import { requireSession, assertCurrentPassword } from '../lib/session.mjs';
