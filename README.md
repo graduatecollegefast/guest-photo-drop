@@ -94,7 +94,7 @@ The guest upload page links to the guest guides.
 | ADMIN_PASSWORD | yes | Password for `/admin` |
 | RESEND_API_KEY | yes | Resend API key for password reset and deletion emails |
 | EMAIL_FROM | no | e.g. `Guest Photo Drop <hello@guestphotodrop.com>` (a domain verified in Resend) |
-| SUPPORT_EMAIL | no | Reply-to address on emails (default theeverydayearners@gmail.com) |
+| SUPPORT_EMAIL | no | Reply-to address on emails (default hello@guestphotodrop.com) |
 
 ## Stripe webhook
 

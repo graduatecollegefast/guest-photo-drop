@@ -1,7 +1,7 @@
 // Transactional email through Resend's REST API (no SDK).
 // Set RESEND_API_KEY and EMAIL_FROM in Netlify. Without a key, emails are skipped and logged.
 
-export const SUPPORT_EMAIL = () => process.env.SUPPORT_EMAIL || 'theeverydayearners@gmail.com';
+export const SUPPORT_EMAIL = () => process.env.SUPPORT_EMAIL || 'hello@guestphotodrop.com';
 
 export function emailConfigured() {
   return Boolean(process.env.RESEND_API_KEY);
@@ -45,7 +45,7 @@ function layout(title, bodyHtml) {
 ${bodyHtml}
 <p style="margin:28px 0 0;font-size:13px;color:#7a706a">Questions? Reply to this email or write to ${escapeHtml(SUPPORT_EMAIL())}.</p>
 </td></tr></table>
-<p style="font-size:12px;color:#9a908a;margin:16px 0 0">Guest Photo Drop, a product of The Digital Comeback, PO Box 9456, Overland Park, KS 66219</p>
+<p style="font-size:12px;color:#9a908a;margin:16px 0 0">Guest Photo Drop, a product of PLE Press LLC, PO Box 9456, Overland Park, KS 66219</p>
 </td></tr></table></body></html>`;
 }
 
