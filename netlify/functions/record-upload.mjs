@@ -1,31 +1,30 @@
 // POST /.netlify/functions/record-upload
-// { slug, sessionId, uploadId, guestName, result: <Cloudinary upload response> }
-// Creates exactly one Airtable Upload record per Cloudinary asset. Safe to call repeatedly.
+// { slug, sessionId, uploadId, guestName, originalFilename,
+//   result: { key, thumbKey?, kind, width?, height?, duration? } }
+// Confirms the file really is in this event's R2 folder, then creates exactly one
+// Airtable Upload record for it. Safe to call repeatedly.
 
-import crypto from 'node:crypto';
-import { handler, json, requireMethod, readJson, ensureConfigured, HttpError, SESSION_ID_RE, cleanText } from '../lib/http.mjs';
-import { findEventBySlug, effectiveStatus, storageFolder } from '../lib/events.mjs';
-import { verifyUploadResponse } from '../lib/cloudinary.mjs';
+import { handler, json, requireMethod, readJson, ensureConfigured, HttpError, SESSION_ID_RE, UPLOAD_ID_RE, cleanText } from '../lib/http.mjs';
+import { findEventBySlug, effectiveStatus } from '../lib/events.mjs';
+import { headObject, thumbKey as thumbKeyFor } from '../lib/r2.mjs';
 import { listRecords, createRecord, formulaString } from '../lib/airtable.mjs';
-import { config, IMAGE_FORMATS, VIDEO_FORMATS } from '../lib/config.mjs';
-
-const UPLOAD_ID_RE = /^[A-Za-z0-9-]{8,64}$/;
-const ASSET_ID_RE = /^[a-f0-9]{16,64}$/;
+import { config, IMAGE_FORMATS, VIDEO_FORMATS, R2_KEYS } from '../lib/config.mjs';
 
 function numberOrNull(v) {
   const n = Number(v);
   return Number.isFinite(n) && n >= 0 ? n : null;
 }
 
+const invalid = (detail) => new HttpError(400, 'invalid_upload', 'We could not confirm this upload.', detail);
+
 export default handler('record-upload', async (req) => {
   requireMethod(req, 'POST');
-  ensureConfigured([
-    'AIRTABLE_ACCESS_TOKEN', 'AIRTABLE_BASE_ID', 'AIRTABLE_EVENTS_TABLE_ID', 'AIRTABLE_UPLOADS_TABLE_ID',
-    'CLOUDINARY_API_SECRET',
-  ]);
+  ensureConfigured(['AIRTABLE_ACCESS_TOKEN', 'AIRTABLE_BASE_ID', 'AIRTABLE_EVENTS_TABLE_ID', 'AIRTABLE_UPLOADS_TABLE_ID', ...R2_KEYS]);
 
   const body = await readJson(req);
   const r = body.result || {};
+  if (!UPLOAD_ID_RE.test(body.uploadId || '')) throw invalid('bad upload id');
+  const uploadId = body.uploadId;
 
   const event = await findEventBySlug(body.slug);
   // Accept late registrations for uploads that started before uploads were closed,
@@ -35,53 +34,48 @@ export default handler('record-upload', async (req) => {
     throw new HttpError(403, 'event_not_open', 'This event is not accepting photos.');
   }
 
-  // 1. The metadata must really come from Cloudinary for an upload we signed.
-  if (!verifyUploadResponse(r)) {
-    throw new HttpError(400, 'invalid_upload', 'We could not confirm this upload.', 'Cloudinary response signature mismatch');
-  }
-  // 2. It must live in this event's folder.
-  if (typeof r.public_id !== 'string' || !r.public_id.startsWith(`${storageFolder(event)}/`)) {
-    throw new HttpError(400, 'invalid_upload', 'We could not confirm this upload.', `public_id outside event folder: ${r.public_id}`);
-  }
-  // 3. Basic shape checks.
-  if (!ASSET_ID_RE.test(r.asset_id || '')) throw new HttpError(400, 'invalid_upload', 'We could not confirm this upload.', 'bad asset_id');
-  const type = r.resource_type;
-  const format = String(r.format || '').toLowerCase();
-  const okFormat = (type === 'image' && IMAGE_FORMATS.includes(format)) || (type === 'video' && VIDEO_FORMATS.includes(format));
-  if (!okFormat) throw new HttpError(400, 'unsupported_file', 'This file type is not supported.', `${type}/${format}`);
+  // The key must be exactly the one this event's ticket hands out for this upload id.
+  const m = typeof r.key === 'string' && r.key.match(/^events\/([^/]+)\/originals\/([A-Za-z0-9-]+)\.([a-z0-9]{2,5})$/);
+  if (!m || m[1] !== event.eventId || m[2] !== uploadId) throw invalid(`key outside event folder: ${r.key}`);
+  const format = m[3];
+  const type = VIDEO_FORMATS.includes(format) ? 'video' : IMAGE_FORMATS.includes(format) ? 'image' : null;
+  if (!type) throw new HttpError(400, 'unsupported_file', 'This file type is not supported.', format);
 
-  const uploadId = UPLOAD_ID_RE.test(body.uploadId || '') ? body.uploadId : crypto.randomUUID();
-  const sessionId = SESSION_ID_RE.test(body.sessionId || '') ? body.sessionId : '';
-
-  // Idempotency: one record per Cloudinary asset (or per client upload id).
+  // Idempotency: one record per upload id.
   const { uploadsTable } = config().airtable;
   const existing = await listRecords(uploadsTable, {
-    filterByFormula: `OR({Storage Asset ID} = ${formulaString(r.asset_id)}, {Upload ID} = ${formulaString(uploadId)})`,
+    filterByFormula: `{Upload ID} = ${formulaString(uploadId)}`,
     fields: ['Upload ID'],
     maxRecords: 1,
     pageSize: 1,
   });
-  if (existing.records.length) {
-    return json({ ok: true, uploadId: existing.records[0].fields['Upload ID'] || uploadId, duplicate: true });
+  if (existing.records.length) return json({ ok: true, uploadId, duplicate: true });
+
+  // The file must really be in storage; its size comes from storage, not the browser.
+  const head = await headObject(r.key);
+  if (!head || !head.size) throw invalid(`missing object ${r.key}`);
+  let tKey;
+  if (r.thumbKey) {
+    if (r.thumbKey !== thumbKeyFor(event.eventId, uploadId)) throw invalid(`bad thumb key ${r.thumbKey}`);
+    tKey = (await headObject(r.thumbKey)) ? r.thumbKey : undefined;
   }
 
-  const originalFilename = cleanText(body.originalFilename || r.original_filename || '', 200);
+  const sessionId = SESSION_ID_RE.test(body.sessionId || '') ? body.sessionId : '';
   const fields = {
     'Upload ID': uploadId,
     Event: [event.recordId],
     'Event Key': event.eventId,
     'Guest Name': cleanText(body.guestName, 80) || undefined,
-    'Storage Asset ID': r.asset_id,
-    'Storage Key': r.public_id,
-    'Secure URL': typeof r.secure_url === 'string' && r.secure_url.startsWith('https://res.cloudinary.com/') ? r.secure_url : undefined,
+    'Storage Asset ID': uploadId,
+    'Storage Key': r.key,
+    'Thumb Key': tKey,
     'Resource Type': type,
     Format: format,
-    Version: numberOrNull(r.version),
-    'Original Filename': originalFilename || undefined,
-    'File Size': numberOrNull(r.bytes),
-    Width: numberOrNull(r.width),
-    Height: numberOrNull(r.height),
-    Duration: type === 'video' ? numberOrNull(r.duration) : undefined,
+    'Original Filename': cleanText(body.originalFilename || '', 200) || undefined,
+    'File Size': head.size,
+    Width: numberOrNull(r.width) || undefined,
+    Height: numberOrNull(r.height) || undefined,
+    Duration: type === 'video' ? numberOrNull(r.duration) || undefined : undefined,
     Status: 'Active',
     'Uploaded At': new Date().toISOString(),
     'Upload Session ID': sessionId || undefined,

@@ -8,9 +8,10 @@ process.env.AIRTABLE_ACCESS_TOKEN = 'test-token';
 process.env.AIRTABLE_BASE_ID = 'appTEST';
 process.env.AIRTABLE_EVENTS_TABLE_ID = 'tblEvents';
 process.env.AIRTABLE_UPLOADS_TABLE_ID = 'tblUploads';
-process.env.CLOUDINARY_CLOUD_NAME = 'demo-cloud';
-process.env.CLOUDINARY_API_KEY = '123456';
-process.env.CLOUDINARY_API_SECRET = 'test-secret';
+process.env.R2_ACCOUNT_ID = 'acct123';
+process.env.R2_ACCESS_KEY_ID = 'AKIDTEST';
+process.env.R2_SECRET_ACCESS_KEY = 'r2-secret-test';
+process.env.R2_BUCKET = 'bucket-test';
 process.env.SESSION_SECRET = 'session-secret-for-tests-only';
 process.env.AIRTABLE_CUSTOMERS_TABLE_ID = 'tblCustomers';
 process.env.AIRTABLE_ORDERS_TABLE_ID = 'tblOrders';
@@ -20,26 +21,27 @@ process.env.SITE_URL = 'https://guestphotodrop.test';
 process.env.AIRTABLE_PARTNERS_TABLE_ID = 'tblPartners';
 process.env.ADMIN_PASSWORD = 'owner admin pass';
 
-const { signParams, verifyUploadResponse, archiveDownloadUrl } = await import('../netlify/lib/cloudinary.mjs');
+const { presign } = await import('../netlify/lib/r2.mjs');
 const { hashPassword, verifyPassword, createSessionToken, verifySessionToken } = await import('../netlify/lib/session.mjs');
 const { effectiveStatus, addDays } = await import('../netlify/lib/events.mjs');
 const TEST_HASH = hashPassword('correct horse battery');
 
 const getEvent = (await import('../netlify/functions/get-event.mjs')).default;
-const uploadSignature = (await import('../netlify/functions/upload-signature.mjs')).default;
+const uploadTicket = (await import('../netlify/functions/upload-ticket.mjs')).default;
 const recordUpload = (await import('../netlify/functions/record-upload.mjs')).default;
 const login = (await import('../netlify/functions/dashboard-login.mjs')).default;
 const dashboardEvent = (await import('../netlify/functions/dashboard-event.mjs')).default;
 const dashboardMedia = (await import('../netlify/functions/dashboard-media.mjs')).default;
 const hideMedia = (await import('../netlify/functions/hide-media.mjs')).default;
 const prepareDownload = (await import('../netlify/functions/prepare-download.mjs')).default;
-const coverSignature = (await import('../netlify/functions/cover-signature.mjs')).default;
+const coverUploadUrl = (await import('../netlify/functions/cover-upload-url.mjs')).default;
 const setCover = (await import('../netlify/functions/set-cover.mjs')).default;
 
 // ---------- Fake Airtable ----------
 const db = { tblEvents: [], tblUploads: [], tblCustomers: [], tblOrders: [], tblPartners: [] };
 const sentEmails = [];
-const cloudinaryDeletes = [];
+const r2 = new Map(); // fake bucket: key -> size
+const r2Deletes = [];
 const stripe = { sessions: {}, created: 0 };
 let airtableDown = false;
 let created = 0;
@@ -52,16 +54,40 @@ function evalFormula(formula, fields) {
   return results.every(Boolean);
 }
 
+async function fakeR2(request) {
+  const u = new URL(request.url);
+  assert.ok(u.searchParams.has('X-Amz-Signature') || request.headers.get('authorization'), 'R2 requests are signed');
+  const [, bucket, ...rest] = u.pathname.split('/');
+  assert.equal(bucket, 'bucket-test');
+  const key = rest.map(decodeURIComponent).join('/');
+  if (request.method === 'HEAD') {
+    return r2.has(key) ? new Response(null, { status: 200, headers: { 'content-length': String(r2.get(key)) } }) : new Response(null, { status: 404 });
+  }
+  if (request.method === 'GET' && u.searchParams.get('list-type') === '2') {
+    const prefix = u.searchParams.get('prefix');
+    const keys = [...r2.keys()].filter((k) => k.startsWith(prefix));
+    return new Response(`<ListBucketResult>${keys.map((k) => `<Contents><Key>${k}</Key></Contents>`).join('')}<IsTruncated>false</IsTruncated></ListBucketResult>`);
+  }
+  if (request.method === 'POST' && u.searchParams.has('delete')) {
+    assert.ok(request.headers.get('content-md5'), 'bulk delete needs Content-MD5');
+    const body = await request.text();
+    for (const m of body.matchAll(/<Key>(.*?)<\/Key>/g)) {
+      r2.delete(m[1]);
+      r2Deletes.push(m[1]);
+    }
+    return new Response('<DeleteResult/>');
+  }
+  throw new Error(`unexpected R2 call ${request.method} ${u}`);
+}
+
 globalThis.fetch = async (url, opts = {}) => {
+  if (url instanceof Request) return fakeR2(url);
   const u = new URL(url);
+  if (u.hostname.endsWith('.r2.cloudflarestorage.com')) return fakeR2(new Request(url, opts));
   if (u.hostname === 'api.stripe.com') return fakeStripe(u, opts);
   if (u.hostname === 'api.resend.com') {
     sentEmails.push(JSON.parse(opts.body));
     return Response.json({ id: `email_${sentEmails.length}` });
-  }
-  if (u.hostname === 'api.cloudinary.com' && opts.method === 'DELETE') {
-    cloudinaryDeletes.push({ path: u.pathname, prefix: u.searchParams.get('prefix') });
-    return Response.json({ deleted: { a: 'deleted' }, partial: false });
   }
   if (u.hostname !== 'api.airtable.com') throw new Error(`unexpected fetch ${url}`);
   if (airtableDown) return new Response('down', { status: 503 });
@@ -81,6 +107,11 @@ globalThis.fetch = async (url, opts = {}) => {
   }
   const formula = u.searchParams.get('filterByFormula');
   let found = formula ? rows.filter((r) => evalFormula(formula, r.fields)) : rows;
+  const sortField = u.searchParams.get('sort[0][field]');
+  if (sortField) {
+    const dir = u.searchParams.get('sort[0][direction]') === 'desc' ? -1 : 1;
+    found = [...found].sort((a, b) => (String(a.fields[sortField] ?? '') < String(b.fields[sortField] ?? '') ? -dir : String(a.fields[sortField] ?? '') > String(b.fields[sortField] ?? '') ? dir : 0));
+  }
   const pageSize = Number(u.searchParams.get('pageSize') || 100);
   const offset = Number(u.searchParams.get('offset') || 0);
   const page = found.slice(offset, offset + pageSize);
@@ -136,23 +167,16 @@ function seedEvent(slug, overrides = {}) {
   });
 }
 
-function cloudinaryResult(slug, overrides = {}) {
-  const public_id = `events/evt-${slug}/originals/abc123`;
-  const version = 1760000000;
-  return {
-    asset_id: 'a1b2c3d4e5f60718293a4b5c6d7e8f90',
-    public_id,
-    version,
-    signature: signParams({ public_id, version }),
-    resource_type: 'image',
-    format: 'jpg',
-    bytes: 2048000,
-    width: 4032,
-    height: 3024,
-    secure_url: `https://res.cloudinary.com/demo-cloud/image/upload/v${version}/${public_id}.jpg`,
-    original_filename: 'IMG_2031',
-    ...overrides,
-  };
+// What the browser sends to record-upload after putting a file in storage.
+function stored(eventId, uploadId, { ext = 'jpg', size = 2048000, thumb = true } = {}) {
+  const key = `events/${eventId}/originals/${uploadId}.${ext}`;
+  r2.set(key, size);
+  const result = { key, kind: ['mov', 'mp4'].includes(ext) ? 'video' : 'image', width: 4032, height: 3024 };
+  if (thumb) {
+    result.thumbKey = `events/${eventId}/thumbs/${uploadId}.jpg`;
+    r2.set(result.thumbKey, 30000);
+  }
+  return result;
 }
 
 const req = (url, init = {}) => new Request(`https://site.test/.netlify/functions/${url}`, init);
@@ -166,28 +190,16 @@ beforeEach(() => {
 });
 
 // ---------- Unit tests ----------
-test('Cloudinary signature matches the documented example', () => {
-  const sig = signParams(
-    { eager: 'w_400,h_300,c_pad|w_260,h_200,c_crop', public_id: 'sample_image', timestamp: 1315060510 },
-    'abcd'
-  );
-  assert.equal(sig, 'bfd09f95f331f558cbd1320e67aa8d488770583e');
-});
-
-test('upload response verification rejects tampering', () => {
-  const r = cloudinaryResult('x');
-  assert.equal(verifyUploadResponse(r), true);
-  assert.equal(verifyUploadResponse({ ...r, public_id: 'other/folder/abc' }), false);
-  assert.equal(verifyUploadResponse({ ...r, signature: 'deadbeef' }), false);
-});
-
-test('archive link is signed and lists each file', () => {
-  const url = new URL(archiveDownloadUrl({ resourceType: 'image', publicIds: ['a/1', 'a/2'], name: 'x-photos-1' }));
-  assert.equal(url.pathname, '/v1_1/demo-cloud/image/generate_archive');
-  assert.deepEqual(url.searchParams.getAll('public_ids[]'), ['a/1', 'a/2']);
-  assert.ok(url.searchParams.get('signature'));
-  assert.equal(url.searchParams.get('api_key'), '123456');
-  assert.ok(!url.toString().includes('test-secret'));
+test('R2 links are signed for one key, expire, and never contain the secret', async () => {
+  const url = new URL(await presign('PUT', 'events/evt_abc/originals/u1.jpg', 3600));
+  assert.equal(url.hostname, 'acct123.r2.cloudflarestorage.com');
+  assert.equal(url.pathname, '/bucket-test/events/evt_abc/originals/u1.jpg');
+  assert.equal(url.searchParams.get('X-Amz-Expires'), '3600');
+  assert.ok(url.searchParams.get('X-Amz-Signature'));
+  assert.match(url.searchParams.get('X-Amz-Credential'), /^AKIDTEST\//);
+  assert.ok(!url.toString().includes('r2-secret-test'));
+  const capped = new URL(await presign('GET', 'k', 999999999));
+  assert.equal(capped.searchParams.get('X-Amz-Expires'), '604800');
 });
 
 test('passwords hash and verify', () => {
@@ -245,56 +257,74 @@ test('get-event: draft events reveal nothing', async () => {
   assert.deepEqual(event, { slug: 'draft-event', status: 'draft' });
 });
 
-test('upload-signature: active event gets a scoped signature without the secret', async () => {
+const ticket = (slug, over = {}) =>
+  uploadTicket(post('upload-ticket', { slug, sessionId: 'session-1234', uploadId: 'upload-0001', name: 'IMG_1.JPG', type: 'image/jpeg', size: 3000000, kind: 'image', ...over }));
+
+test('upload-ticket: a signed link for one file in this event folder only', async () => {
   seedEvent('sig-event', { 'Allow Videos': false });
-  const res = await uploadSignature(post('upload-signature', { slug: 'sig-event', sessionId: 'session-1234' }));
+  const res = await ticket('sig-event');
   assert.equal(res.status, 200);
-  const { upload } = await res.json();
-  assert.equal(upload.params.folder, 'events/evt-sig-event/originals');
-  assert.equal(upload.params.allowed_formats, 'jpg,jpeg,png,webp,heic,heif');
-  assert.equal(upload.signature, signParams(upload.params));
-  assert.ok(!JSON.stringify(upload).includes('test-secret'));
+  const t = (await res.json()).ticket;
+  assert.equal(t.key, 'events/evt-sig-event/originals/upload-0001.jpg');
+  assert.equal(t.thumbKey, 'events/evt-sig-event/thumbs/upload-0001.jpg');
+  assert.equal(t.contentType, 'image/jpeg');
+  assert.match(t.putUrl, /\/bucket-test\/events\/evt-sig-event\/originals\/upload-0001\.jpg\?/);
+  assert.ok(!JSON.stringify(t).includes('r2-secret-test'));
+  // Videos are off for this event, files must be within size limits, odd ids are refused.
+  assert.equal((await (await ticket('sig-event', { name: 'a.mov', type: 'video/quicktime', kind: 'video' })).json()).error, 'unsupported_file');
+  assert.equal((await (await ticket('sig-event', { name: 'a.exe', type: 'application/x-msdownload' })).json()).error, 'unsupported_file');
+  assert.equal((await ticket('sig-event', { size: 11 * 1024 * 1024 })).status, 413);
+  assert.equal((await ticket('sig-event', { uploadId: '../../x' })).status, 400);
 });
 
-test('upload-signature: closed, expired and draft events are refused server-side', async () => {
+test('upload-ticket: closed, expired and draft events are refused server-side', async () => {
   seedEvent('closed-event', { Status: 'Closed' });
   seedEvent('expired-event', { 'Hosting End Date': '2020-01-01' });
   seedEvent('draft2-event', { Status: 'Draft' });
   for (const [slug, code] of [['closed-event', 'event_closed'], ['expired-event', 'event_expired'], ['draft2-event', 'event_not_open']]) {
-    const res = await uploadSignature(post('upload-signature', { slug, sessionId: 'session-1234' }));
+    const res = await ticket(slug);
     assert.equal(res.status, 403);
     assert.equal((await res.json()).error, code);
   }
 });
 
-test('record-upload creates exactly one record and is idempotent', async () => {
+test('record-upload creates exactly one record, sized from storage, and is idempotent', async () => {
   seedEvent('rec-event');
   const before = db.tblUploads.length;
-  const body = { slug: 'rec-event', sessionId: 'session-1234', uploadId: 'upload-0001', guestName: '  Tanya  ', result: cloudinaryResult('rec-event') };
+  const result = stored('evt-rec-event', 'upload-0001', { size: 2222222 });
+  const body = { slug: 'rec-event', sessionId: 'session-1234', uploadId: 'upload-0001', guestName: '  Tanya  ', originalFilename: 'IMG_1.JPG', result: { ...result, size: 1 } };
   const r1 = await (await recordUpload(post('record-upload', body))).json();
   assert.equal(r1.ok, true);
   assert.equal(r1.duplicate, false);
-  const r2 = await (await recordUpload(post('record-upload', body))).json();
-  assert.equal(r2.duplicate, true);
-  // Same asset, different client upload id: still no duplicate.
-  const r3 = await (await recordUpload(post('record-upload', { ...body, uploadId: 'upload-0002' }))).json();
-  assert.equal(r3.duplicate, true);
+  const r2b = await (await recordUpload(post('record-upload', body))).json();
+  assert.equal(r2b.duplicate, true);
   assert.equal(db.tblUploads.length, before + 1);
   const row = db.tblUploads.at(-1).fields;
   assert.equal(row['Guest Name'], 'Tanya');
   assert.equal(row['Event Key'], 'evt-rec-event');
   assert.deepEqual(row.Event, ['recEvtrec-event']);
   assert.equal(row.Status, 'Active');
+  assert.equal(row['Storage Key'], 'events/evt-rec-event/originals/upload-0001.jpg');
+  assert.equal(row['Thumb Key'], 'events/evt-rec-event/thumbs/upload-0001.jpg');
+  assert.equal(row['File Size'], 2222222, 'size comes from storage, not the browser');
+  assert.equal(row['Resource Type'], 'image');
 });
 
-test('record-upload rejects forged or foreign uploads', async () => {
+test('record-upload rejects forged, foreign or missing uploads', async () => {
   seedEvent('forge-event');
-  const forged = cloudinaryResult('forge-event', { signature: 'f'.repeat(40) });
-  let res = await recordUpload(post('record-upload', { slug: 'forge-event', result: forged }));
+  // Another event's file.
+  const other = stored('evt-someone-else', 'upload-0003');
+  let res = await recordUpload(post('record-upload', { slug: 'forge-event', uploadId: 'upload-0003', result: other }));
   assert.equal(res.status, 400);
-  // Valid Cloudinary signature but stored under another event's folder.
-  const other = cloudinaryResult('someone-else');
-  res = await recordUpload(post('record-upload', { slug: 'forge-event', result: other }));
+  // Right folder but a different upload id than claimed.
+  const mine = stored('evt-forge-event', 'upload-0004');
+  res = await recordUpload(post('record-upload', { slug: 'forge-event', uploadId: 'upload-0005', result: mine }));
+  assert.equal(res.status, 400);
+  // Never actually uploaded.
+  res = await recordUpload(post('record-upload', { slug: 'forge-event', uploadId: 'upload-0006', result: { key: 'events/evt-forge-event/originals/upload-0006.jpg' } }));
+  assert.equal(res.status, 400);
+  // A thumbnail key pointing somewhere else.
+  res = await recordUpload(post('record-upload', { slug: 'forge-event', uploadId: 'upload-0004', result: { ...mine, thumbKey: 'events/evt-forge-event/thumbs/other.jpg' } }));
   assert.equal(res.status, 400);
 });
 
@@ -302,7 +332,7 @@ test('Airtable outage returns a friendly error, not a stack trace', async () => 
   seedEvent('down-event');
   await getEvent(req('get-event?slug=down-event')); // warm cache
   airtableDown = true;
-  const res = await recordUpload(post('record-upload', { slug: 'down-event', uploadId: 'upload-0099', result: cloudinaryResult('down-event', { asset_id: 'ffffffffffffffffffffffffffffffff' }) }));
+  const res = await recordUpload(post('record-upload', { slug: 'down-event', uploadId: 'upload-0099', result: stored('evt-down-event', 'upload-0099') }));
   assert.equal(res.status, 502);
   const body = await res.json();
   assert.equal(body.error, 'database_error');
@@ -346,10 +376,12 @@ test('dashboard: counts, paginated media, hide, and download links', async () =>
       fields: {
         'Upload ID': `dash-upload-${String(i).padStart(4, '0')}`,
         'Event Key': 'evt-jordan-and-taylor',
-        'Storage Key': `events/evt-jordan-and-taylor/originals/p${i}`,
+        'Storage Key': `events/evt-jordan-and-taylor/originals/p${i}.${i % 10 === 0 ? 'mov' : 'heic'}`,
+        'Thumb Key': i % 3 === 0 ? `events/evt-jordan-and-taylor/thumbs/p${i}.jpg` : undefined,
+        'Original Filename': `IMG_${i}.HEIC`,
+        'File Size': 1000000,
         'Resource Type': i % 10 === 0 ? 'video' : 'image',
         Format: i % 10 === 0 ? 'mov' : 'heic',
-        Version: 1,
         Status: 'Active',
         'Uploaded At': new Date(Date.now() - i * 1000).toISOString(),
       },
@@ -365,10 +397,15 @@ test('dashboard: counts, paginated media, hide, and download links', async () =>
   assert.equal(p2.items.length, 10);
   assert.equal(p2.nextCursor, null);
 
-  const img = p1.items.find((i) => i.type === 'image');
-  assert.match(img.thumbUrl, /c_limit,w_600,q_auto,f_auto/);
-  assert.match(img.downloadUrl, /fl_attachment/);
-  assert.match(img.downloadUrl, /\.heic$/);
+  const withThumb = p1.items.find((i) => i.type === 'image' && i.thumbUrl);
+  assert.match(withThumb.thumbUrl, /\/thumbs\/p\d+\.jpg\?.*X-Amz-Signature=/);
+  // HEIC can't show in browsers, so without a preview there is nothing to show (download still works).
+  const noThumb = p1.items.find((i) => i.type === 'image' && !i.thumbUrl);
+  assert.equal(noThumb.displayUrl, null);
+  const img = noThumb;
+  const dlUrl = new URL(img.downloadUrl);
+  assert.match(dlUrl.searchParams.get('response-content-disposition'), /^attachment; filename="IMG_\d+\.HEIC"$/);
+  assert.match(dlUrl.pathname, /\/originals\/p\d+\.heic$/);
 
   const h = await hideMedia(post('hide-media', { uploadId: img.id }, { cookie }));
   assert.equal(h.status, 200);
@@ -380,37 +417,37 @@ test('dashboard: counts, paginated media, hide, and download links', async () =>
   const dl = await (await prepareDownload(post('prepare-download', {}, { cookie }))).json();
   assert.equal(dl.totals.photos, 53); // 54 photos minus the hidden one
   assert.equal(dl.totals.videos, 6);
-  assert.equal(dl.parts.filter((p) => p.type === 'image').length, 2);
+  assert.equal(dl.files.length, 59);
+  assert.equal(dl.files[0].name, 'photos/0001.heic');
+  assert.ok(dl.files.every((f) => f.url.includes('X-Amz-Signature=') && f.bytes === 1000000));
 });
 
-test('couple photo: signed into the cover folder, saved as a display URL, removable', async () => {
+test('couple photo: uploaded to the cover folder, shown through a signed link, removable', async () => {
   seedEvent('cover-event');
   const cookie = `wp_session=${createSessionToken({ sub: 'couple', eventSlug: 'cover-event' })}`;
-  assert.equal((await coverSignature(post('cover-signature', {}))).status, 401);
+  assert.equal((await coverUploadUrl(post('cover-upload-url', {}))).status, 401);
 
-  const sig = await (await coverSignature(post('cover-signature', {}, { cookie }))).json();
-  assert.equal(sig.upload.params.folder, 'events/evt-cover-event/cover');
-  assert.match(sig.upload.url, /\/image\/upload$/);
-  assert.equal(sig.upload.signature, signParams(sig.upload.params));
+  const { upload } = await (await coverUploadUrl(post('cover-upload-url', {}, { cookie }))).json();
+  assert.match(upload.key, /^events\/evt-cover-event\/cover\/[a-f0-9-]{36}\.jpg$/);
+  assert.match(upload.putUrl, /X-Amz-Signature=/);
 
-  const public_id = 'events/evt-cover-event/cover/us';
-  const version = 1760000001;
-  const good = { public_id, version, signature: signParams({ public_id, version }), resource_type: 'image', format: 'jpg' };
-  const res = await (await setCover(post('set-cover', { result: good }, { cookie }))).json();
-  assert.match(res.coverImageUrl, /c_fill,g_auto,w_1200,h_900,q_auto,f_auto\/v1760000001\/events\/evt-cover-event\/cover\/us$/);
+  // Not uploaded yet: refused.
+  assert.equal((await setCover(post('set-cover', { key: upload.key }, { cookie }))).status, 400);
+  r2.set(upload.key, 250000);
+  const res = await (await setCover(post('set-cover', { key: upload.key }, { cookie }))).json();
+  assert.match(res.coverImageUrl, /\/cover\/.*X-Amz-Signature=/);
   const ev = db.tblEvents.find((e) => e.fields['Event Slug'] === 'cover-event');
-  assert.equal(ev.fields['Cover Image URL'], res.coverImageUrl);
+  assert.equal(ev.fields['Cover Image Key'], upload.key);
   const pub = await (await getEvent(req('get-event?slug=cover-event'))).json();
-  assert.equal(pub.event.coverImageUrl, res.coverImageUrl);
+  assert.match(pub.event.coverImageUrl, /acct123\.r2\.cloudflarestorage\.com\/bucket-test\/events\/evt-cover-event\/cover\//);
 
   // A guest upload (originals folder) can't be used as the cover.
-  const guestPid = 'events/evt-cover-event/originals/x';
-  const bad = { public_id: guestPid, version, signature: signParams({ public_id: guestPid, version }), resource_type: 'image' };
-  assert.equal((await setCover(post('set-cover', { result: bad }, { cookie }))).status, 400);
+  const guest = stored('evt-cover-event', 'upload-0042');
+  assert.equal((await setCover(post('set-cover', { key: guest.key }, { cookie }))).status, 400);
 
   const removed = await (await setCover(post('set-cover', { remove: true }, { cookie }))).json();
   assert.equal(removed.coverImageUrl, '');
-  assert.equal(ev.fields['Cover Image URL'], null);
+  assert.equal(ev.fields['Cover Image Key'], '');
 });
 
 // ---------- Signup and checkout ----------
@@ -556,11 +593,14 @@ test('login: 10 attempts per 15 minutes, then locked even with the right passwor
 test('storage cap: a full album refuses new uploads; others get the space left', async () => {
   seedEvent('full-party', { Plan: 'Party Drop', 'Storage Bytes': 5 * 1024 ** 3 });
   seedEvent('roomy-party', { Plan: 'Party Drop', 'Storage Bytes': 1024 ** 3 });
-  const full = await uploadSignature(post('upload-signature', { slug: 'full-party', sessionId: 'session-1234' }));
+  const full = await ticket('full-party');
   assert.equal(full.status, 403);
   assert.equal((await full.json()).error, 'album_full');
-  const ok = await (await uploadSignature(post('upload-signature', { slug: 'roomy-party', sessionId: 'session-1234' }))).json();
-  assert.equal(ok.upload.remainingBytes, 4 * 1024 ** 3);
+  assert.equal((await ticket('roomy-party')).status, 200);
+  seedEvent('nearly-full', { Plan: 'Party Drop', 'Storage Bytes': 5 * 1024 ** 3 - 1024 ** 2 });
+  const tooBig = await ticket('nearly-full', { size: 3000000 });
+  assert.equal(tooBig.status, 403);
+  assert.equal((await tooBig.json()).error, 'album_full');
 });
 
 test('forgot password emails a one-time link; reset signs out old sessions', async () => {
@@ -675,8 +715,10 @@ test('daily job: emails, then deletes only that event folder', async () => {
   process.env.RESEND_API_KEY = 're_test';
   db.tblEvents.length = 0;
   seedEvent('old-party', { 'Event ID': 'evt_abc123def456', 'Hosting End Date': '2027-01-31', 'Owner Email': 'old@example.com', 'Cover Image URL': 'https://res.cloudinary.com/x.jpg' });
+  evRow('old-party').fields['Cover Image Key'] = 'events/evt_abc123def456/cover/c1.jpg';
+  for (const k of ['events/evt_abc123def456/originals/u1.jpg', 'events/evt_abc123def456/thumbs/u1.jpg', 'events/evt_abc123def456/cover/c1.jpg', 'events/evt_other000000/originals/u9.jpg']) r2.set(k, 1000);
   sentEmails.length = 0;
-  cloudinaryDeletes.length = 0;
+  r2Deletes.length = 0;
   const at = (d) => new Date(`${d}T18:00:00Z`);
 
   let sum = await runRetention({ now: at('2027-02-01') });
@@ -687,11 +729,14 @@ test('daily job: emails, then deletes only that event folder', async () => {
   assert.equal(sum.notices, 0, 'no repeat emails');
   await runRetention({ now: at('2027-02-24') });
   assert.equal(evRow('old-party').fields['Deletion Notice 7 Sent'], '2027-02-24');
-  assert.equal(cloudinaryDeletes.length, 0);
+  assert.equal(r2Deletes.length, 0);
 
   sum = await runRetention({ now: at('2027-03-03') });
   assert.equal(sum.deleted, 1);
-  assert.deepEqual([...new Set(cloudinaryDeletes.map((d) => d.prefix))], ['events/evt_abc123def456/']);
+  assert.equal(r2Deletes.length, 3);
+  assert.ok(r2Deletes.every((k) => k.startsWith('events/evt_abc123def456/')), 'only this event folder');
+  assert.ok(r2.has('events/evt_other000000/originals/u9.jpg'), 'other events untouched');
+  assert.equal(evRow('old-party').fields['Cover Image Key'], '');
   const f = evRow('old-party').fields;
   assert.equal(f['Files Deleted On'], '2027-03-03');
   assert.equal(f.Status, 'Expired');

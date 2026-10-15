@@ -16,10 +16,12 @@ export function config() {
       ordersTable: process.env.AIRTABLE_ORDERS_TABLE_ID || '',
       partnersTable: process.env.AIRTABLE_PARTNERS_TABLE_ID || '',
     },
-    cloudinary: {
-      cloudName: process.env.CLOUDINARY_CLOUD_NAME || '',
-      apiKey: process.env.CLOUDINARY_API_KEY || '',
-      apiSecret: process.env.CLOUDINARY_API_SECRET || '',
+    // Cloudflare R2 (S3-compatible) for photos and videos.
+    r2: {
+      accountId: process.env.R2_ACCOUNT_ID || '',
+      accessKeyId: process.env.R2_ACCESS_KEY_ID || '',
+      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY || '',
+      bucket: process.env.R2_BUCKET || '',
     },
     dashboard: {
       sessionSecret: process.env.SESSION_SECRET || '',
@@ -39,7 +41,7 @@ export function config() {
   };
 }
 
-// File formats accepted end to end. Cloudinary enforces these too (allowed_formats is signed).
+// File formats accepted end to end (checked in the browser and again on the server).
 export const IMAGE_FORMATS = ['jpg', 'jpeg', 'png', 'webp', 'heic', 'heif'];
 export const VIDEO_FORMATS = ['mp4', 'mov', 'm4v', '3gp', 'webm'];
 
@@ -54,9 +56,10 @@ export function missingConfig(keys) {
     AIRTABLE_ORDERS_TABLE_ID: c.airtable.ordersTable,
     AIRTABLE_PARTNERS_TABLE_ID: c.airtable.partnersTable,
     ADMIN_PASSWORD: process.env.ADMIN_PASSWORD || '',
-    CLOUDINARY_CLOUD_NAME: c.cloudinary.cloudName,
-    CLOUDINARY_API_KEY: c.cloudinary.apiKey,
-    CLOUDINARY_API_SECRET: c.cloudinary.apiSecret,
+    R2_ACCOUNT_ID: c.r2.accountId,
+    R2_ACCESS_KEY_ID: c.r2.accessKeyId,
+    R2_SECRET_ACCESS_KEY: c.r2.secretAccessKey,
+    R2_BUCKET: c.r2.bucket,
     SESSION_SECRET: c.dashboard.sessionSecret,
     STRIPE_SECRET_KEY: c.stripe.secretKey,
     STRIPE_WEBHOOK_SECRET: c.stripe.webhookSecret,
@@ -64,3 +67,11 @@ export function missingConfig(keys) {
   };
   return keys.filter((k) => !flat[k]);
 }
+
+export const R2_KEYS = ['R2_ACCOUNT_ID', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY', 'R2_BUCKET'];
+
+// Browser MIME types for each accepted extension (used when the file has no usable type).
+export const MIME = {
+  jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', heic: 'image/heic', heif: 'image/heif',
+  mp4: 'video/mp4', mov: 'video/quicktime', m4v: 'video/x-m4v', '3gp': 'video/3gpp', webm: 'video/webm',
+};

@@ -11,6 +11,13 @@ os.makedirs(OUT, exist_ok=True)
 def jpg(name):
     return {"name": name, "mimeType": "image/jpeg", "buffer": b"\xff\xd8\xff\xe0" + b"\x00" * 2000}
 
+def realjpg(name, size=(1200, 900)):
+    import io
+    from PIL import Image
+    buf = io.BytesIO()
+    Image.new("RGB", size, (180, 120, 140)).save(buf, "JPEG", quality=85)
+    return {"name": name, "mimeType": "image/jpeg", "buffer": buf.getvalue()}
+
 def mov(name):
     return {"name": name, "mimeType": "video/quicktime", "buffer": struct.pack(">I", 20) + b"ftypqt  " + b"\x00" * 4000}
 
@@ -37,7 +44,7 @@ with sync_playwright() as p:
     page.goto(BASE + "/e/jordan-and-taylor")
     page.wait_for_selector("text=Add your photos & videos")
 
-    files = [jpg(f"IMG_20{i:02d}.JPG") for i in range(22)] + [jpg("IMG_FAIL_9999.JPG"), mov("IMG_3001.MOV"), jpg("IMG_REGFAIL.JPG"),
+    files = [realjpg("IMG_2000.JPG")] + [jpg(f"IMG_20{i:02d}.JPG") for i in range(1, 22)] + [jpg("IMG_FAIL_9999.JPG"), mov("IMG_3001.MOV"), jpg("IMG_REGFAIL.JPG"),
              {"name": "notes.jpg", "mimeType": "image/jpeg", "buffer": b"%PDF-1.7" + b"\x00" * 100}]
     page.set_input_files("input[type=file]", files)
     page.wait_for_selector("text=25 memories selected")
@@ -54,8 +61,8 @@ with sync_playwright() as p:
     page.screenshot(path=f"{OUT}/iphone-4-partial.png", full_page=True)
     s = stats()
     check(page.locator("text=23 memories uploaded.").count() == 1, "partial summary shows 23 uploaded")
-    check(all(v == 1 for k, v in s["cloudinary"].items() if "FAIL" not in k), "each successful file sent to Cloudinary once")
-    check(s["cloudinary"].get("IMG_REGFAIL.JPG") == 1, "file whose album save failed was uploaded once")
+    check(all(v == 1 for k, v in s["storage"].items() if "FAIL" not in k), "each successful file sent to storage once")
+    check(s["storage"].get("IMG_REGFAIL.JPG") == 1, "file whose album save failed was uploaded once")
 
     page.click("text=Try 2 failed files again")
     page.wait_for_selector("text=Memories added!", timeout=60000)
@@ -63,10 +70,11 @@ with sync_playwright() as p:
     s = stats()
     check(page.locator("text=Thanks, Tanya!").count() == 1, "thanks with first name")
     check(page.locator("text=Your 25 photos and videos have been added").count() == 1, "success count 25")
-    check(s["cloudinary"].get("IMG_REGFAIL.JPG") == 1, "retrying a failed album save did not re-upload the file")
-    check(s["cloudinary"].get("IMG_FAIL_9999.JPG") == 4, "failed file re-uploaded only on retry")
-    check(all(v == 1 for k, v in s["cloudinary"].items() if "FAIL" not in k), "successful files never re-uploaded after retry")
+    check(s["storage"].get("IMG_REGFAIL.JPG") == 1, "retrying a failed album save did not re-upload the file")
+    check(s["storage"].get("IMG_FAIL_9999.JPG") == 4, "failed file re-uploaded only on retry")
+    check(all(v == 1 for k, v in s["storage"].items() if "FAIL" not in k), "successful files never re-uploaded after retry")
     check(len(s["registered"]) == 25, "exactly 25 album records")
+    check(s["thumbs"].get("IMG_2000.JPG") == 1, "preview image made in the browser and stored once")
 
     page.click("text=Upload more")
     page.wait_for_selector("text=Add your photos & videos")
@@ -118,7 +126,8 @@ with sync_playwright() as p:
     mp.close()
 
     # Dashboard (desktop)
-    d = browser.new_page(viewport={"width": 1280, "height": 900})
+    d = browser.new_page(viewport={"width": 1280, "height": 900}, accept_downloads=True)
+    d.add_init_script("window.showSaveFilePicker = undefined")
     d.goto(BASE + "/dashboard/jordan-and-taylor")
     d.wait_for_selector("text=The Wedding Album")
     d.fill("input[type=password]", "wrong password")
@@ -153,13 +162,24 @@ with sync_playwright() as p:
 
     d.click("text=Download all")
     d.click("text=Prepare download")
-    d.wait_for_selector("text=Photos — part 1 of 2")
+    d.wait_for_selector("text=/^Photos \\(\\d+, /")
+    label = d.locator("text=/^Photos \\(\\d+, /").inner_text()
+    n_photos = int(label.split("(")[1].split(",")[0])
+    check(d.locator("text=/Videos, part \\d of \\d/").count() >= 2, "videos split into 300 MB parts")
+    with d.expect_download() as dl:
+        d.click("text=/^Photos \\(\\d+, /")
+    zpath = dl.value.path()
+    import zipfile
+    with zipfile.ZipFile(zpath) as z:
+        names = z.namelist()
+    check(dl.value.suggested_filename == "jordan-and-taylor-photos.zip" and len(names) == n_photos and n_photos > 50, f"photos ZIP built in the browser with {n_photos} files")
+    d.wait_for_selector("text=saved ✓")
     d.screenshot(path=f"{OUT}/desktop-4-download.png")
     d.click("text=Event settings")
     d.wait_for_timeout(600)
     d.screenshot(path=f"{OUT}/desktop-5-settings.png")
     check(d.locator("text=Download QR code").is_enabled(), "QR code generated")
-    d.set_input_files(".cover-panel input[type=file]", [jpg("us.jpg")])
+    d.set_input_files(".cover-panel input[type=file]", [realjpg("us.jpg", (3000, 2000))])
     d.wait_for_selector(".cover-preview img")
     check(d.locator("text=Change photo").count() == 1, "couple photo uploaded from settings")
     d.wait_for_timeout(400)

@@ -74,6 +74,7 @@ export function handler(fnName, fn) {
 
 export const SLUG_RE = /^[a-z0-9](?:[a-z0-9-]{0,78}[a-z0-9])?$/;
 export const SESSION_ID_RE = /^[A-Za-z0-9-]{8,64}$/;
+export const UPLOAD_ID_RE = /^[A-Za-z0-9-]{8,64}$/;
 
 export function cleanText(value, max = 100) {
   if (typeof value !== 'string') return '';

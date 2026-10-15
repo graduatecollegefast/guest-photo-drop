@@ -4,7 +4,7 @@
 
 import { handler, json, requireMethod, ensureConfigured, HttpError } from '../lib/http.mjs';
 import { requireSession, assertCurrentPassword } from '../lib/session.mjs';
-import { findEventBySlug, effectiveStatus, deleteOnDate, storageInfo } from '../lib/events.mjs';
+import { findEventBySlug, effectiveStatus, deleteOnDate, storageInfo, coverUrl } from '../lib/events.mjs';
 import { EXTENSION } from '../lib/plans.mjs';
 import { SUPPORT_EMAIL } from '../lib/email.mjs';
 import { config } from '../lib/config.mjs';
@@ -41,7 +41,7 @@ export default handler('dashboard-event', async (req) => {
       storage: storageInfo(event),
       extension: { price: EXTENSION.priceCents / 100, months: EXTENSION.months, available: !event.filesDeletedOn },
       supportEmail: SUPPORT_EMAIL(),
-      coverImageUrl: event.coverImageUrl,
+      coverImageUrl: await coverUrl(event),
       allowPhotos: event.allowPhotos,
       allowVideos: event.allowVideos,
       maxFilesPerUpload: event.maxFilesPerUpload,

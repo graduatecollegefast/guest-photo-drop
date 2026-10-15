@@ -4,13 +4,13 @@
 // Safety rules:
 //   - Files are only deleted after the 7-day warning was actually sent at least 7 days earlier.
 //     If email isn't set up, nothing is deleted (the job logs why).
-//   - Only the event's own Cloudinary folder (events/<Event ID>/) is ever deleted.
+//   - Only the event's own storage folder (events/<Event ID>/) is ever deleted.
 //   - At most MAX_DELETIONS_PER_RUN events are deleted per run; the rest wait for the next day.
 
 import { config } from './config.mjs';
 import { listAll, updateRecord, formulaString } from './airtable.mjs';
 import { normalize, deleteOnDate, addDays, todayIn, clearEventCache } from './events.mjs';
-import { deleteByPrefix } from './cloudinary.mjs';
+import { deleteEventFiles } from './r2.mjs';
 import { sendEmail, emailConfigured, deletionNoticeEmail } from './email.mjs';
 
 export const MAX_DELETIONS_PER_RUN = 5;
@@ -72,11 +72,12 @@ export async function runRetention({ now = new Date() } = {}) {
           continue;
         }
         deletions += 1;
-        const result = await deleteByPrefix(`events/${event.eventId}/`);
+        const result = await deleteEventFiles(event.eventId);
         await updateRecord(c.airtable.eventsTable, event.recordId, {
           'Files Deleted On': today,
           Status: 'Expired',
           'Cover Image URL': null,
+          'Cover Image Key': '',
         });
         clearEventCache(event.slug);
         console.log(`[retention] ${event.slug}: deleted ${result.deleted} files`);

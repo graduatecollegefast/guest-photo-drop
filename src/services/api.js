@@ -44,7 +44,7 @@ async function call(path, { method = 'GET', body, timeoutMs = 20000 } = {}) {
 
 export const api = {
   getEvent: (slug) => call(`get-event?slug=${encodeURIComponent(slug)}`),
-  uploadSignature: (slug, sessionId) => call('upload-signature', { method: 'POST', body: { slug, sessionId } }),
+  uploadTicket: (meta) => call('upload-ticket', { method: 'POST', body: meta }),
   recordUpload: (payload) => call('record-upload', { method: 'POST', body: payload }),
   login: (slug, password) => call('dashboard-login', { method: 'POST', body: { slug, password } }),
   logout: () => call('dashboard-logout', { method: 'POST' }),
@@ -58,8 +58,8 @@ export const api = {
     return call(`dashboard-media?${q}`);
   },
   hideMedia: (uploadId, hidden = true) => call('hide-media', { method: 'POST', body: { uploadId, hidden } }),
-  coverSignature: () => call('cover-signature', { method: 'POST' }),
-  setCover: (result) => call('set-cover', { method: 'POST', body: { result } }),
+  coverUploadUrl: () => call('cover-upload-url', { method: 'POST' }),
+  setCover: (key) => call('set-cover', { method: 'POST', body: { key } }),
   removeCover: () => call('set-cover', { method: 'POST', body: { remove: true } }),
   prepareDownload: () => call('prepare-download', { method: 'POST', timeoutMs: 30000 }),
   forgotPassword: (slug, email) => call('forgot-password', { method: 'POST', body: { slug, email } }),

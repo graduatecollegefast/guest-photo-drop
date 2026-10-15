@@ -1,66 +1,52 @@
 // POST /.netlify/functions/prepare-download  (requires session)
-// Builds signed Cloudinary archive links for every visible (Active) photo and video,
-// split into parts so each ZIP stays a manageable size. Cloudinary builds each ZIP
-// when its link is opened; no media passes through Netlify.
-// Isolated on purpose: swapping in a different bulk-download mechanism only touches this file.
+// Lists every visible (Active) photo and video with a signed link, plus a file name.
+// The browser fetches them straight from storage and builds the ZIP files itself,
+// so no media passes through Netlify.
 
 import { handler, json, requireMethod, ensureConfigured } from '../lib/http.mjs';
 import { requireSession, assertCurrentPassword } from '../lib/session.mjs';
 import { findEventBySlug } from '../lib/events.mjs';
 import { listAll, formulaString } from '../lib/airtable.mjs';
-import { archiveDownloadUrl } from '../lib/cloudinary.mjs';
-import { config } from '../lib/config.mjs';
-
-const PER_PART = { image: 40, video: 4 };
-
-function chunk(list, size) {
-  const out = [];
-  for (let i = 0; i < list.length; i += size) out.push(list.slice(i, i + size));
-  return out;
-}
+import { presign } from '../lib/r2.mjs';
+import { safeFilename } from '../lib/media.mjs';
+import { config, R2_KEYS } from '../lib/config.mjs';
 
 export default handler('prepare-download', async (req) => {
   requireMethod(req, 'POST');
-  ensureConfigured(['SESSION_SECRET', 'AIRTABLE_ACCESS_TOKEN', 'AIRTABLE_BASE_ID', 'AIRTABLE_UPLOADS_TABLE_ID', 'CLOUDINARY_CLOUD_NAME', 'CLOUDINARY_API_KEY', 'CLOUDINARY_API_SECRET']);
+  ensureConfigured(['SESSION_SECRET', 'AIRTABLE_ACCESS_TOKEN', 'AIRTABLE_BASE_ID', 'AIRTABLE_UPLOADS_TABLE_ID', ...R2_KEYS]);
   const session = requireSession(req);
   const event = await findEventBySlug(session.eventSlug);
   assertCurrentPassword(session, event);
 
   const records = await listAll(config().airtable.uploadsTable, {
     filterByFormula: `AND({Event Key} = ${formulaString(event.eventId)}, {Status} = 'Active')`,
-    fields: ['Storage Key', 'Resource Type', 'Uploaded At'],
+    fields: ['Storage Key', 'Resource Type', 'Format', 'Guest Name', 'File Size', 'Uploaded At'],
     sort: [{ field: 'Uploaded At', direction: 'asc' }],
   });
 
-  const byType = { image: [], video: [] };
+  const counters = { image: 0, video: 0 };
+  const files = [];
   for (const rec of records) {
-    const pid = rec.fields['Storage Key'];
-    const type = rec.fields['Resource Type'] === 'video' ? 'video' : 'image';
-    if (pid) byType[type].push(pid);
-  }
-
-  const parts = [];
-  for (const type of ['image', 'video']) {
-    const groups = chunk(byType[type], PER_PART[type]);
-    groups.forEach((ids, i) => {
-      const label = type === 'image' ? 'Photos' : 'Videos';
-      parts.push({
-        type,
-        label: groups.length > 1 ? `${label} — part ${i + 1} of ${groups.length}` : label,
-        count: ids.length,
-        url: archiveDownloadUrl({
-          resourceType: type,
-          publicIds: ids,
-          name: `${event.slug}-${type === 'image' ? 'photos' : 'videos'}-${i + 1}`,
-        }),
-      });
+    const f = rec.fields;
+    if (!f['Storage Key']) continue;
+    const type = f['Resource Type'] === 'video' ? 'video' : 'image';
+    counters[type] += 1;
+    const n = String(counters[type]).padStart(4, '0');
+    const who = safeFilename(f['Guest Name'], '').replace(/\s+/g, '-');
+    const ext = f['Format'] || f['Storage Key'].split('.').pop();
+    files.push({
+      type,
+      name: `${type === 'video' ? 'videos' : 'photos'}/${n}${who ? `-${who}` : ''}.${ext}`,
+      bytes: Number(f['File Size']) || 0,
+      url: await presign('GET', f['Storage Key'], 6 * 3600),
     });
   }
 
   return json({
     ok: true,
-    totals: { photos: byType.image.length, videos: byType.video.length },
-    expiresInMinutes: 55,
-    parts,
+    name: event.slug,
+    totals: { photos: counters.image, videos: counters.video },
+    expiresInMinutes: 6 * 60 - 5,
+    files,
   });
 });
