@@ -107,6 +107,11 @@ globalThis.fetch = async (url, opts = {}) => {
   }
   const formula = u.searchParams.get('filterByFormula');
   let found = formula ? rows.filter((r) => evalFormula(formula, r.fields)) : rows;
+  const sortField = u.searchParams.get('sort[0][field]');
+  if (sortField) {
+    const dir = u.searchParams.get('sort[0][direction]') === 'desc' ? -1 : 1;
+    found = [...found].sort((a, b) => (String(a.fields[sortField] ?? '') < String(b.fields[sortField] ?? '') ? -dir : String(a.fields[sortField] ?? '') > String(b.fields[sortField] ?? '') ? dir : 0));
+  }
   const pageSize = Number(u.searchParams.get('pageSize') || 100);
   const offset = Number(u.searchParams.get('offset') || 0);
   const page = found.slice(offset, offset + pageSize);
@@ -591,8 +596,11 @@ test('storage cap: a full album refuses new uploads; others get the space left',
   const full = await ticket('full-party');
   assert.equal(full.status, 403);
   assert.equal((await full.json()).error, 'album_full');
-  const ok = await (await uploadSignature(post('upload-signature', { slug: 'roomy-party', sessionId: 'session-1234' }))).json();
-  assert.equal(ok.upload.remainingBytes, 4 * 1024 ** 3);
+  assert.equal((await ticket('roomy-party')).status, 200);
+  seedEvent('nearly-full', { Plan: 'Party Drop', 'Storage Bytes': 5 * 1024 ** 3 - 1024 ** 2 });
+  const tooBig = await ticket('nearly-full', { size: 3000000 });
+  assert.equal(tooBig.status, 403);
+  assert.equal((await tooBig.json()).error, 'album_full');
 });
 
 test('forgot password emails a one-time link; reset signs out old sessions', async () => {
@@ -707,8 +715,10 @@ test('daily job: emails, then deletes only that event folder', async () => {
   process.env.RESEND_API_KEY = 're_test';
   db.tblEvents.length = 0;
   seedEvent('old-party', { 'Event ID': 'evt_abc123def456', 'Hosting End Date': '2027-01-31', 'Owner Email': 'old@example.com', 'Cover Image URL': 'https://res.cloudinary.com/x.jpg' });
+  evRow('old-party').fields['Cover Image Key'] = 'events/evt_abc123def456/cover/c1.jpg';
+  for (const k of ['events/evt_abc123def456/originals/u1.jpg', 'events/evt_abc123def456/thumbs/u1.jpg', 'events/evt_abc123def456/cover/c1.jpg', 'events/evt_other000000/originals/u9.jpg']) r2.set(k, 1000);
   sentEmails.length = 0;
-  cloudinaryDeletes.length = 0;
+  r2Deletes.length = 0;
   const at = (d) => new Date(`${d}T18:00:00Z`);
 
   let sum = await runRetention({ now: at('2027-02-01') });
@@ -719,11 +729,14 @@ test('daily job: emails, then deletes only that event folder', async () => {
   assert.equal(sum.notices, 0, 'no repeat emails');
   await runRetention({ now: at('2027-02-24') });
   assert.equal(evRow('old-party').fields['Deletion Notice 7 Sent'], '2027-02-24');
-  assert.equal(cloudinaryDeletes.length, 0);
+  assert.equal(r2Deletes.length, 0);
 
   sum = await runRetention({ now: at('2027-03-03') });
   assert.equal(sum.deleted, 1);
-  assert.deepEqual([...new Set(cloudinaryDeletes.map((d) => d.prefix))], ['events/evt_abc123def456/']);
+  assert.equal(r2Deletes.length, 3);
+  assert.ok(r2Deletes.every((k) => k.startsWith('events/evt_abc123def456/')), 'only this event folder');
+  assert.ok(r2.has('events/evt_other000000/originals/u9.jpg'), 'other events untouched');
+  assert.equal(evRow('old-party').fields['Cover Image Key'], '');
   const f = evRow('old-party').fields;
   assert.equal(f['Files Deleted On'], '2027-03-03');
   assert.equal(f.Status, 'Expired');
