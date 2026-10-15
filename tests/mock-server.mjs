@@ -157,7 +157,7 @@ const server = http.createServer(async (req, res) => {
     if (!authed) return send(res, 401, { ok: false, error: 'session_expired', message: 'Please sign in again.' });
     if (fn === 'dashboard-event') {
       const vis = items.filter((i) => !hidden.has(i.id));
-      return send(res, 200, { ok: true, event: { ...eventFor('jordan-and-taylor'), deleteOnDate: '2028-07-12', filesDeletedOn: null, storage: { usedBytes: 6.2 * 1024 ** 3, capBytes: 25 * 1024 ** 3, full: false }, extension: { price: 19, months: 12, available: true }, supportEmail: 'theeverydayearners@gmail.com', counts: { media: vis.length, photos: vis.filter((i) => i.type === 'image').length, videos: vis.filter((i) => i.type === 'video').length, hidden: hidden.size, contributors: 3 } } });
+      return send(res, 200, { ok: true, event: { ...eventFor('jordan-and-taylor'), deleteOnDate: '2028-07-12', filesDeletedOn: null, storage: { usedBytes: 6.2 * 1024 ** 3, capBytes: 25 * 1024 ** 3, full: false }, extension: { price: 19, months: 12, available: true }, supportEmail: 'hello@guestphotodrop.com', counts: { media: vis.length, photos: vis.filter((i) => i.type === 'image').length, videos: vis.filter((i) => i.type === 'video').length, hidden: hidden.size, contributors: 3 } } });
     }
     if (fn === 'update-event') {
       const body = JSON.parse((await readBody(req)).toString());

@@ -35,7 +35,7 @@ export function SiteFooter() {
         <Link to="/refunds">Refunds</Link>
         <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>
       </nav>
-      <p className="muted small">A product of The Digital Comeback.</p>
+      <p className="muted small">A product of PLE Press LLC.</p>
     </footer>
   );
 }
